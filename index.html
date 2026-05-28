@@ -31,6 +31,10 @@
                 <a href="#ranking-section" class="nav-link" data-section="ranking">排行榜</a>
                 <a href="#upload-section" class="nav-link" data-section="upload">上传新猫咪</a>
             </div>
+            <!-- 夜间模式切换按钮 -->
+            <button class="theme-toggle" id="themeToggle" aria-label="切换夜间模式" title="切换夜间模式">
+                <span class="theme-icon" id="themeIcon">🌙</span>
+            </button>
         </div>
     </nav>
 
@@ -205,6 +209,12 @@
                     <h3 class="chart-title">🌟 收藏排行榜 TOP 10</h3>
                     <div class="chart-container">
                         <canvas id="favoritesChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card glass-card">
+                    <h3 class="chart-title">🎯 猫咪等级分布</h3>
+                    <div class="chart-container">
+                        <canvas id="levelDistChart"></canvas>
                     </div>
                 </div>
                 <div class="chart-card glass-card">
@@ -387,6 +397,28 @@
         <div class="footer-stats" id="footerStats"></div>
     </footer>
 
+    <!-- 海报预览弹窗 -->
+    <div class="poster-modal-overlay" id="posterModalOverlay">
+        <div class="poster-modal-content" id="posterModalContent">
+            <button class="poster-modal-close" id="posterModalClose" aria-label="关闭">✕</button>
+            <div class="poster-loading" id="posterLoading">
+                <div class="poster-spinner"></div>
+                <p>正在生成海报...</p>
+            </div>
+            <canvas id="posterCanvas" class="poster-canvas" style="display: none;"></canvas>
+            <div class="poster-actions" id="posterActions">
+                <button class="poster-action-btn download" id="posterDownloadBtn">
+                    <span>📥</span> 下载 PNG
+                </button>
+                <button class="poster-action-btn copy" id="posterCopyBtn">
+                    <span>📋</span> 复制分享
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="growth.js"></script>
+    <script src="poster.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

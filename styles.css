@@ -20,6 +20,80 @@
     --success-color: #7BC67B;
     --heart-color: #FF6B8A;
     --favorite-color: #FF6B8A;
+    --bg-gradient-start: rgba(255, 200, 200, 0.2);
+    --bg-gradient-end: rgba(255, 213, 158, 0.1);
+    --glass-bg: rgba(255, 255, 255, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.5);
+    --input-bg: #FFFFFF;
+    --modal-overlay-bg: rgba(0, 0, 0, 0.5);
+}
+
+/* ===== 夜间模式变量 ===== */
+body.dark-mode {
+    --primary-color: #E87777;
+    --primary-light: #3D3D3D;
+    --primary-dark: #C55555;
+    --secondary-color: #2A2A2A;
+    --accent-color: #D99B5A;
+    --accent-light: #3D3D3D;
+    --text-dark: #E8E8E8;
+    --text-light: #A0A0A0;
+    --card-bg: #1E1E1E;
+    --shadow-soft: rgba(0, 0, 0, 0.3);
+    --shadow-hover: rgba(0, 0, 0, 0.5);
+    --success-color: #5BA35B;
+    --heart-color: #FF5555;
+    --favorite-color: #FF5555;
+    --bg-gradient-start: rgba(30, 30, 30, 0.9);
+    --bg-gradient-end: rgba(40, 40, 40, 0.9);
+    --glass-bg: rgba(40, 40, 40, 0.8);
+    --glass-border: rgba(80, 80, 80, 0.5);
+    --input-bg: #2A2A2A;
+    --modal-overlay-bg: rgba(0, 0, 0, 0.7);
+}
+
+/* ===== 主题切换按钮 ===== */
+.theme-toggle {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: var(--primary-light);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    margin-left: 10px;
+    flex-shrink: 0;
+}
+
+.theme-toggle:hover {
+    background: var(--primary-color);
+    transform: scale(1.1);
+}
+
+.theme-icon {
+    font-size: 1.5rem;
+    transition: transform 0.3s ease;
+}
+
+.theme-toggle:active .theme-icon {
+    transform: rotate(360deg);
+}
+
+/* 夜间模式下太阳图标颜色 */
+body.dark-mode .theme-icon {
+    /* 图标由 JS updateThemeIcon() 动态切换 */
+}
+
+body.dark-mode .theme-toggle {
+    background: #3D3D3D;
+}
+
+body.dark-mode .theme-toggle:hover {
+    background: #4D4D4D;
 }
 
 /* ===== 导航栏 ===== */
@@ -53,6 +127,7 @@
     color: var(--text-dark);
     font-weight: 700;
     font-size: 1.3rem;
+    flex-shrink: 0;
 }
 
 .nav-logo-icon {
@@ -72,8 +147,36 @@
     border: none;
     cursor: pointer;
     padding: 10px;
+    z-index: 1001;
 }
 
+.nav-menu {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+}
+
+.nav-link {
+    padding: 10px 20px;
+    text-decoration: none;
+    color: var(--text-dark);
+    font-weight: 500;
+    border-radius: 20px;
+    transition: all 0.3s ease;
+    position: relative;
+    white-space: nowrap;
+}
+
+.nav-link:hover {
+    background: var(--primary-light);
+}
+
+.nav-link.active {
+    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+    color: white;
+}
+
+/* 汉堡菜单按钮样式 */
 .nav-toggle span {
     display: block;
     width: 25px;
@@ -93,30 +196,6 @@
 
 .nav-toggle.active span:nth-child(3) {
     transform: rotate(-45deg) translate(7px, -6px);
-}
-
-.nav-menu {
-    display: flex;
-    gap: 5px;
-}
-
-.nav-link {
-    padding: 10px 20px;
-    text-decoration: none;
-    color: var(--text-dark);
-    font-weight: 500;
-    border-radius: 20px;
-    transition: all 0.3s ease;
-    position: relative;
-}
-
-.nav-link:hover {
-    background: var(--primary-light);
-}
-
-.nav-link.active {
-    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: white;
 }
 
 /* ===== 装饰元素 ===== */
@@ -519,9 +598,158 @@
     position: relative;
 }
 
+/* Hover — 上浮 + 放大 + 阴影增强 */
 .cat-card:hover {
-    transform: translateY(-10px);
-    box-shadow: 0 20px 50px var(--shadow-hover);
+    transform: translateY(-12px) scale(1.03);
+    box-shadow: 0 24px 55px var(--shadow-hover);
+}
+
+/* Hover — 心形气泡（左侧） */
+.cat-card::before {
+    content: '';
+    position: absolute;
+    bottom: 60px;
+    left: 15px;
+    width: 20px;
+    height: 20px;
+    background: radial-gradient(circle, #FF6B8A 30%, transparent 70%);
+    border-radius: 50%;
+    opacity: 0;
+    z-index: 5;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+.cat-card:hover::before {
+    opacity: 1;
+    animation: heartBubbleLeft 1.8s ease-out infinite;
+}
+
+/* Hover — 心形气泡（右侧） */
+.cat-card::after {
+    content: '';
+    position: absolute;
+    bottom: 90px;
+    right: 20px;
+    width: 16px;
+    height: 16px;
+    background: radial-gradient(circle, #FFB26B 30%, transparent 70%);
+    border-radius: 50%;
+    opacity: 0;
+    z-index: 5;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+.cat-card:hover::after {
+    opacity: 1;
+    animation: heartBubbleRight 2s ease-out 0.5s infinite;
+}
+
+/* Hover — 卡片微光扫过 */
+.cat-card .card-shimmer {
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg,
+        transparent,
+        rgba(255, 255, 255, 0.25),
+        transparent);
+    z-index: 6;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.cat-card:hover .card-shimmer {
+    opacity: 1;
+    animation: shimmerSweep 1.5s ease-in-out infinite;
+}
+
+/* Hover — 猫爪装饰浮现 */
+.cat-card .hover-paw {
+    position: absolute;
+    bottom: 12px;
+    right: 15px;
+    font-size: 1.5rem;
+    opacity: 0;
+    z-index: 5;
+    pointer-events: none;
+    transition: all 0.3s ease;
+    transform: scale(0.5);
+}
+
+.cat-card:hover .hover-paw {
+    opacity: 0.7;
+    transform: scale(1);
+    animation: pawPop 1.2s ease-in-out infinite;
+}
+
+/* ===== Hover 动画关键帧 ===== */
+
+/* 心形气泡 — 左侧 */
+@keyframes heartBubbleLeft {
+    0% {
+        transform: translateY(0) translateX(0) scale(0.5);
+        opacity: 0;
+    }
+    20% {
+        opacity: 0.8;
+        transform: translateY(-30px) translateX(8px) scale(1);
+    }
+    50% {
+        transform: translateY(-80px) translateX(-5px) scale(1.3);
+        opacity: 0.6;
+    }
+    100% {
+        transform: translateY(-160px) translateX(15px) scale(0.3);
+        opacity: 0;
+    }
+}
+
+/* 心形气泡 — 右侧 */
+@keyframes heartBubbleRight {
+    0% {
+        transform: translateY(0) translateX(0) scale(0.5);
+        opacity: 0;
+    }
+    25% {
+        opacity: 0.7;
+        transform: translateY(-40px) translateX(-10px) scale(1);
+    }
+    60% {
+        transform: translateY(-100px) translateX(8px) scale(1.4);
+        opacity: 0.5;
+    }
+    100% {
+        transform: translateY(-180px) translateX(-12px) scale(0.2);
+        opacity: 0;
+    }
+}
+
+/* 微光扫过 */
+@keyframes shimmerSweep {
+    0% {
+        left: -80%;
+    }
+    100% {
+        left: 120%;
+    }
+}
+
+/* 猫爪弹跳 */
+@keyframes pawPop {
+    0%, 100% {
+        transform: scale(1) rotate(0deg);
+    }
+    30% {
+        transform: scale(1.3) rotate(-10deg);
+    }
+    60% {
+        transform: scale(0.9) rotate(5deg);
+    }
 }
 
 .cat-card.hidden {
@@ -555,6 +783,19 @@
     0%, 100% { transform: translateX(0) rotate(0); }
     25% { transform: translateX(-5px) rotate(-2deg); }
     75% { transform: translateX(5px) rotate(2deg); }
+}
+
+/* 彩蛋 — 弹跳动画 */
+.cat-card.bounce-card {
+    animation: bounceCard 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+@keyframes bounceCard {
+    0% { transform: translateY(0) scale(1); }
+    30% { transform: translateY(-25px) scale(1.05); }
+    50% { transform: translateY(0) scale(0.95); }
+    70% { transform: translateY(-12px) scale(1.02); }
+    100% { transform: translateY(0) scale(1); }
 }
 
 .cat-image-container {
@@ -1630,42 +1871,6 @@
 
 /* ===== 响应式设计 ===== */
 @media (max-width: 768px) {
-    .navbar {
-        height: auto;
-    }
-
-    .nav-container {
-        flex-wrap: wrap;
-        height: auto;
-        padding: 10px 20px;
-    }
-
-    .nav-logo {
-        padding: 10px 0;
-    }
-
-    .nav-toggle {
-        display: flex;
-        padding: 10px;
-    }
-
-    .nav-menu {
-        display: none;
-        width: 100%;
-        flex-direction: column;
-        padding: 10px 0;
-        gap: 5px;
-    }
-
-    .nav-menu.active {
-        display: flex;
-    }
-
-    .nav-link {
-        padding: 12px 20px;
-        text-align: center;
-    }
-
     .hero {
         min-height: 70vh;
         padding: 90px 20px 60px;
@@ -1717,13 +1922,20 @@
         font-size: 1.4rem;
     }
 
+    .filter-buttons {
+        gap: 8px;
+        justify-content: center;
+        max-width: 100%;
+    }
+
     .filter-btn {
-        padding: 10px 18px;
-        font-size: 0.9rem;
+        padding: 10px 16px;
+        font-size: 0.85rem;
     }
 
     .filter-btn.favorited {
         width: 100%;
+        max-width: 200px;
     }
 
     .cats-grid {
@@ -1761,6 +1973,7 @@
     .modal-content {
         width: 95%;
         border-radius: 20px;
+        max-height: 85vh;
     }
 
     .modal-body {
@@ -1773,6 +1986,10 @@
 
     .modal-favorites-grid {
         grid-template-columns: 1fr;
+    }
+
+    .modal-kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
     }
 
     /* 上传表单 */
@@ -1798,8 +2015,8 @@
     }
 
     .tag-label {
-        padding: 8px 15px;
-        font-size: 0.9rem;
+        padding: 8px 14px;
+        font-size: 0.85rem;
     }
 
     .image-option {
@@ -1813,19 +2030,11 @@
 
     .form-actions {
         flex-direction: column;
+        gap: 12px;
     }
 
     .submit-btn, .reset-btn {
         width: 100%;
-    }
-
-    /* 收藏区域 */
-    .favorites-section {
-        padding: 40px 15px;
-    }
-
-    .favorites-grid {
-        padding: 20px;
     }
 
     .easter-egg-toast {
@@ -1837,6 +2046,85 @@
         font-size: 1rem;
         padding: 15px 25px;
         bottom: 80px;
+    }
+
+    /* 动态 Toast 移动端适配 */
+    .modal-share-btns {
+        flex-direction: column;
+    }
+
+    .modal-share-btn {
+        font-size: 0.9rem;
+        padding: 10px 15px;
+    }
+
+    .random-event-toast {
+        font-size: 0.9rem;
+        padding: 12px 18px;
+        max-width: 90vw;
+    }
+
+    .game-toast {
+        font-size: 0.85rem;
+        padding: 10px 16px;
+        max-width: 90vw;
+    }
+
+    /* KPI 面板移动端适配 */
+    .kpi-overview {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+
+    .kpi-card {
+        padding: 15px 10px;
+    }
+
+    .kpi-icon {
+        font-size: 2rem;
+    }
+
+    .kpi-value {
+        font-size: 1.6rem;
+    }
+
+    .charts-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .chart-card {
+        padding: 15px;
+    }
+
+    .chart-container {
+        height: 220px;
+    }
+
+    .wide-chart {
+        grid-column: span 1;
+    }
+
+    /* 排行榜移动端适配 */
+    .ranking-item {
+        padding: 12px;
+        flex-wrap: wrap;
+    }
+
+    .ranking-image {
+        width: 45px;
+        height: 45px;
+    }
+
+    .ranking-name {
+        font-size: 1rem;
+    }
+
+    .ranking-breed {
+        font-size: 0.8rem;
+    }
+
+    .ranking-score-value {
+        font-size: 1.2rem;
     }
 }
 
@@ -1851,7 +2139,7 @@
 
     .filter-btn {
         padding: 8px 12px;
-        font-size: 0.85rem;
+        font-size: 0.8rem;
     }
 
     .cat-info {
@@ -1863,8 +2151,8 @@
     }
 
     .action-btn {
-        width: 35px;
-        height: 35px;
+        width: 36px;
+        height: 36px;
         font-size: 1rem;
     }
 
@@ -1872,12 +2160,130 @@
         display: none;
     }
 
-    .upload-title, .favorites-title {
+    .upload-title, .favorites-title, .dashboard-title, .ranking-title {
         font-size: 1.5rem;
     }
 
     .modal-name {
         font-size: 1.5rem;
+    }
+
+    /* KPI 面板更小屏幕 */
+    .kpi-overview {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+
+    .kpi-card {
+        padding: 12px 8px;
+    }
+
+    .kpi-value {
+        font-size: 1.4rem;
+    }
+
+    .kpi-label {
+        font-size: 0.75rem;
+    }
+
+    .chart-container {
+        height: 180px;
+    }
+
+    /* 排行榜更小屏幕 */
+    .ranking-position {
+        font-size: 1.2rem;
+        min-width: 40px;
+    }
+
+    .ranking-image {
+        width: 40px;
+        height: 40px;
+    }
+
+    .footer-stats {
+        font-size: 0.75rem;
+        line-height: 1.8;
+    }
+}
+
+/* 超小屏幕 (320px) */
+@media (max-width: 320px) {
+    .hero-title {
+        font-size: 1.5rem;
+        letter-spacing: 2px;
+    }
+
+    .hero-subtitle {
+        font-size: 0.95rem;
+    }
+
+    .nav-link {
+        padding: 10px 15px;
+        font-size: 0.9rem;
+    }
+
+    .filter-btn {
+        padding: 6px 10px;
+        font-size: 0.75rem;
+    }
+
+    .kpi-overview {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .cat-card {
+        border-radius: 16px;
+    }
+
+    .cat-image-container {
+        height: 160px;
+    }
+}
+
+/* 导航专用响应式 — 平板和手机 */
+@media (max-width: 900px) {
+    .nav-container {
+        padding: 10px 20px;
+    }
+
+    /* 显示汉堡菜单按钮 */
+    .nav-toggle {
+        display: flex;
+    }
+
+    /* 下拉菜单样式 */
+    .nav-menu {
+        display: none;
+        flex-direction: column;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        width: 100%;
+        background: rgba(255, 255, 255, 0.98);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 10px 30px var(--shadow-soft);
+        border-radius: 0 0 20px 20px;
+        padding: 15px;
+        gap: 5px;
+    }
+
+    .nav-menu.active {
+        display: flex;
+    }
+
+    body.dark-mode .nav-menu {
+        background: rgba(30, 30, 30, 0.98);
+    }
+
+    .nav-link {
+        padding: 14px 20px;
+        font-size: 1rem;
+    }
+
+    .theme-toggle {
+        position: relative;
+        z-index: 1002;
     }
 }
 
@@ -1888,6 +2294,23 @@ html {
 
 body {
     padding-top: 70px;
+    background: var(--bg-gradient-start);
+    color: var(--text-dark);
+    /* 夜间模式切换平滑过渡 */
+    transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+/* ===== 全局主题切换过渡 ===== */
+.navbar, .nav-menu, .cat-card, .modal-content, .upload-container,
+.glass-card, .filter-btn, .search-box, .sort-container select,
+.form-group input, .form-group textarea, .tag-label, .hero-button,
+.random-btn, .submit-btn, .reset-btn, .yarn-score, .ranking-item,
+.file-upload-area, .image-upload-container, .upload-method-btn span,
+.action-btn, .modal-share-btn, .toast, .cat-tag, .modal-tag,
+.easter-egg-toast, .upload-success-toast, .random-event-toast,
+.game-toast, .cat-ear-deco, .footer {
+    transition: background-color 0.4s ease, color 0.4s ease,
+                border-color 0.4s ease, box-shadow 0.4s ease;
 }
 
 /* ===== 滚动条美化 ===== */
@@ -1908,8 +2331,335 @@ body {
     background: var(--primary-color);
 }
 
-/* ===== 触摸设备优化 ===== */
-@media (hover: none) {
+body.dark-mode .navbar {
+    background: rgba(30, 30, 30, 0.95);
+}
+
+body.dark-mode .nav-logo,
+body.dark-mode .nav-link {
+    color: var(--text-dark);
+}
+
+body.dark-mode .nav-toggle span {
+    background: var(--text-dark);
+}
+
+body.dark-mode .hero {
+    background: linear-gradient(180deg, transparent 0%, var(--bg-gradient-start) 100%);
+}
+
+body.dark-mode .hero-title {
+    color: var(--text-dark);
+}
+
+body.dark-mode .hero-subtitle {
+    color: var(--text-light);
+}
+
+body.dark-mode .random-btn {
+    background: var(--card-bg);
+    border-color: var(--primary-dark);
+}
+
+body.dark-mode .search-box {
+    background: var(--input-bg);
+}
+
+body.dark-mode .filter-btn {
+    background: var(--card-bg);
+    border-color: var(--primary-dark);
+    color: var(--text-dark);
+}
+
+body.dark-mode .filter-btn:hover {
+    background: var(--primary-dark);
+}
+
+body.dark-mode .cat-card {
+    background: var(--card-bg);
+}
+
+body.dark-mode .modal-content {
+    background: var(--card-bg);
+}
+
+body.dark-mode .upload-container {
+    background: var(--card-bg);
+}
+
+body.dark-mode .upload-header {
+    background: linear-gradient(135deg, var(--primary-dark), var(--secondary-color));
+}
+
+body.dark-mode .form-group input,
+body.dark-mode .form-group textarea,
+body.dark-mode .image-url-input input {
+    background: var(--input-bg);
+    border-color: var(--primary-dark);
+    color: var(--text-dark);
+}
+
+body.dark-mode .file-upload-area {
+    background: var(--input-bg);
+}
+
+body.dark-mode .image-upload-container {
+    background: var(--secondary-color);
+    border-color: var(--primary-dark);
+}
+
+body.dark-mode .modal-kpi-item,
+body.dark-mode .modal-favorite-item {
+    background: var(--secondary-color);
+}
+
+body.dark-mode .ranking-item {
+    background: rgba(40, 40, 40, 0.8);
+}
+
+body.dark-mode .ranking-item.top-1 {
+    background: linear-gradient(135deg, rgba(60, 50, 30, 0.8), rgba(50, 45, 30, 0.8));
+}
+
+body.dark-mode .ranking-item.top-2 {
+    background: linear-gradient(135deg, rgba(45, 45, 50, 0.8), rgba(40, 40, 45, 0.8));
+}
+
+body.dark-mode .ranking-item.top-3 {
+    background: linear-gradient(135deg, rgba(50, 40, 35, 0.8), rgba(45, 38, 30, 0.8));
+}
+
+body.dark-mode .growth-section {
+    border-color: var(--primary-dark);
+}
+
+body.dark-mode .progress-bar {
+    background: rgba(255, 155, 155, 0.15);
+}
+
+body.dark-mode .yarn-score {
+    background: var(--card-bg);
+}
+
+body.dark-mode .cat-ear-deco {
+    background: var(--primary-dark);
+}
+
+body.dark-mode .footer {
+    background: linear-gradient(180deg, transparent, var(--bg-gradient-start));
+}
+
+/* ===== 夜间模式 - 收藏筛选按钮 ===== */
+body.dark-mode .filter-btn.favorited {
+    border-color: var(--favorite-color);
+    background: linear-gradient(135deg, rgba(255, 107, 138, 0.15), rgba(255, 107, 138, 0.1));
+}
+
+body.dark-mode .filter-btn.favorited.active {
+    background: linear-gradient(135deg, var(--favorite-color), #FF8FA3);
+    color: white;
+}
+
+/* ===== 夜间模式 - 玻璃态卡片 ===== */
+body.dark-mode .glass-card {
+    background: rgba(40, 40, 40, 0.7);
+    border: 1px solid rgba(80, 80, 80, 0.5);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+body.dark-mode .glass-card:hover {
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+
+/* ===== 夜间模式 - 排序下拉 ===== */
+body.dark-mode .sort-container select {
+    background: var(--input-bg);
+    border-color: var(--primary-dark);
+    color: var(--text-dark);
+}
+
+body.dark-mode .sort-container label {
+    color: var(--text-dark);
+}
+
+/* ===== 夜间模式 - 搜索框文字 ===== */
+body.dark-mode .search-box input {
+    color: var(--text-dark);
+}
+
+body.dark-mode .search-box input::placeholder {
+    color: var(--text-light);
+}
+
+/* ===== 夜间模式 - 模态框覆盖层 ===== */
+body.dark-mode .modal-overlay {
+    background: rgba(0, 0, 0, 0.7);
+}
+
+/* ===== 夜间模式 - 上传方法按钮 ===== */
+body.dark-mode .upload-method-btn span {
+    background: var(--input-bg);
+    border-color: var(--primary-dark);
+    color: var(--text-dark);
+}
+
+body.dark-mode .upload-method-btn input:checked + span {
+    background: var(--primary-dark);
+    border-color: var(--primary-color);
+}
+
+/* ===== 夜间模式 - 图片 URL 输入 ===== */
+body.dark-mode .image-url-input input {
+    background: var(--input-bg);
+    border-color: var(--primary-dark);
+    color: var(--text-dark);
+}
+
+/* ===== 夜间模式 - 重置按钮 ===== */
+body.dark-mode .reset-btn {
+    border-color: var(--primary-dark);
+    color: var(--text-light);
+}
+
+/* ===== 夜间模式 - 标签选择器 ===== */
+body.dark-mode .tag-label {
+    background: var(--secondary-color);
+    border-color: var(--primary-dark);
+    color: var(--text-dark);
+}
+
+/* ===== 夜间模式 - 猫咪卡片叠加层 ===== */
+body.dark-mode .cat-image-overlay {
+    background: linear-gradient(transparent, rgba(30, 30, 30, 0.9));
+}
+
+/* ===== 夜间模式 - 点赞计数 ===== */
+body.dark-mode .cat-like-count {
+    background: rgba(40, 40, 40, 0.95);
+    color: var(--text-dark);
+}
+
+/* ===== 夜间模式 - 操作按钮 ===== */
+body.dark-mode .action-btn {
+    background: rgba(40, 40, 40, 0.95);
+    color: var(--text-dark);
+}
+
+/* ===== 夜间模式 - 彩蛋粒子背景 ===== */
+body.dark-mode .easter-egg-toast {
+    background: linear-gradient(135deg, var(--primary-dark), var(--accent-color));
+}
+
+/* ===== 夜间模式 - 排行榜背景 ===== */
+body.dark-mode .ranking-item {
+    background: rgba(40, 40, 40, 0.8);
+}
+
+body.dark-mode .ranking-image {
+    border-color: var(--primary-dark);
+}
+
+/* ===== 夜间模式 - 点击提示 ===== */
+body.dark-mode .cat-click-hint {
+    background: rgba(232, 119, 119, 0.9);
+}
+
+/* ===== 夜间模式 - 区域背景 ===== */
+body.dark-mode .dashboard-section {
+    background: linear-gradient(180deg, rgba(40, 40, 40, 0.5) 0%, rgba(50, 40, 35, 0.5) 100%);
+}
+
+body.dark-mode .ranking-section {
+    background: linear-gradient(180deg, rgba(50, 40, 35, 0.5) 0%, rgba(40, 40, 40, 0.5) 100%);
+}
+
+body.dark-mode .footer {
+    background: linear-gradient(180deg, transparent, rgba(40, 40, 40, 0.8));
+}
+
+body.dark-mode .hero {
+    background: linear-gradient(180deg, transparent 0%, rgba(40, 40, 40, 0.6) 100%);
+}
+
+body.dark-mode .upload-header {
+    background: linear-gradient(135deg, rgba(61, 61, 61, 0.8), rgba(42, 42, 42, 0.8));
+}
+
+/* ===== 夜间模式 - 上传方法按钮选中态文字 ===== */
+body.dark-mode .upload-method-btn input:checked + span {
+    color: var(--text-dark);
+}
+
+/* ===== 增强的响应式设计 ===== */
+
+/* 平板横屏 (768px - 1024px) */
+@media (max-width: 1024px) and (orientation: landscape) {
+    .hero {
+        min-height: 80vh;
+    }
+
+    .cats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* 平板竖屏 (600px - 768px) */
+@media (max-width: 768px) and (min-width: 600px) {
+    .hero-title {
+        font-size: 2.5rem;
+    }
+
+    .filter-buttons {
+        max-width: 90%;
+    }
+
+    .cats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+    }
+
+    .search-container {
+        flex-wrap: nowrap;
+    }
+
+    .kpi-overview {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .charts-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .wide-chart {
+        grid-column: span 2;
+    }
+}
+
+/* 手机横屏 */
+@media (max-width: 850px) and (orientation: landscape) {
+    .hero {
+        min-height: 75vh;
+        padding-top: 80px;
+    }
+
+    .hero-icon .face-main {
+        font-size: 3rem;
+    }
+
+    .hero-title {
+        font-size: 2rem;
+    }
+
+    .cats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .kpi-overview {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* 触摸设备优化 */
+@media (hover: none) and (pointer: coarse) {
     .cat-card:hover .cat-image {
         transform: none;
     }
@@ -1932,6 +2682,64 @@ body {
 
     .submit-btn:hover, .reset-btn:hover {
         transform: none;
+    }
+
+    /* 触摸设备的按钮尺寸 */
+    .action-btn {
+        width: 44px;
+        height: 44px;
+    }
+
+    .hero-button, .random-btn {
+        padding: 16px 32px;
+        font-size: 1.1rem;
+    }
+
+    .filter-btn {
+        padding: 12px 20px;
+        min-height: 44px;
+    }
+}
+
+/* ===== 超大屏幕优化 ===== */
+@media (min-width: 1920px) {
+    .nav-container {
+        max-width: 1600px;
+    }
+
+    .cats-grid {
+        grid-template-columns: repeat(5, 1fr);
+    }
+
+    .hero-title {
+        font-size: 4.5rem;
+    }
+}
+
+/* ===== 安全区域适配 (iPhone X 等) ===== */
+@supports (padding: max(0px)) {
+    .navbar {
+        padding-top: env(safe-area-inset-top);
+    }
+
+    .yarn-game {
+        bottom: max(20px, env(safe-area-inset-bottom));
+        right: max(20px, env(safe-area-inset-right));
+    }
+}
+
+/* ===== 打印样式 ===== */
+@media print {
+    .navbar,
+    .yarn-game,
+    .decorations,
+    .hero-bg,
+    .theme-toggle {
+        display: none !important;
+    }
+
+    body {
+        padding-top: 0;
     }
 }
 
@@ -2016,10 +2824,10 @@ body {
     font-weight: 500;
 }
 
-/* 图表网格 */
+/* 图表网格 — 桌面 3 列，容纳 5 张图表卡 */
 .charts-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 25px;
 }
 
@@ -2044,7 +2852,7 @@ body {
 }
 
 .wide-chart {
-    grid-column: span 2;
+    grid-column: span 3;
 }
 
 /* ===== 排行榜 ===== */
@@ -2340,11 +3148,11 @@ body {
 /* ===== 响应式调整 ===== */
 @media (max-width: 1024px) {
     .charts-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, 1fr);
     }
 
     .wide-chart {
-        grid-column: span 1;
+        grid-column: span 2;
     }
 
     .kpi-overview {
@@ -2397,5 +3205,341 @@ body {
 
     .chart-container.wide {
         height: 200px;
+    }
+}
+
+/* ================================================================
+   猫咪成长系统 UI 样式
+   ================================================================ */
+
+/* 成长标题徽章 */
+.growth-title-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    background: linear-gradient(135deg, var(--accent-color), var(--primary-color));
+    color: white;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+/* 成长进度条渐变色 */
+.growth-fill {
+    background: linear-gradient(90deg, #FF9B9B, #FFB26B, #FFD59E);
+    transition: width 0.6s cubic-bezier(0.25, 0.8, 0.25, 1.2);
+}
+
+/* 不同等级的成长条颜色 */
+.growth-level-2 .growth-fill {
+    background: linear-gradient(90deg, #FFB26B, #FFD59E, #FFE8A0);
+}
+.growth-level-3 .growth-fill {
+    background: linear-gradient(90deg, #FF9B9B, #FFB26B, #FFD59E);
+}
+.growth-level-4 .growth-fill {
+    background: linear-gradient(90deg, #E87777, #FF9B9B, #FFB26B);
+}
+.growth-level-5 .growth-fill {
+    background: linear-gradient(90deg, #C55555, #E87777, #FFD700);
+}
+.growth-level-6 .growth-fill {
+    background: linear-gradient(90deg, #9B30FF, #E87777, #FFD700);
+    animation: legendaryShimmer 2s ease-in-out infinite;
+    background-size: 200% 100%;
+}
+
+@keyframes legendaryShimmer {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+}
+
+/* 高等级卡片发光边框 */
+.cat-card.level-4-card {
+    box-shadow: 0 10px 40px rgba(255, 155, 155, 0.2), 0 0 0 2px rgba(255, 183, 77, 0.3);
+}
+.cat-card.level-5-card {
+    box-shadow: 0 10px 40px rgba(255, 155, 155, 0.25), 0 0 0 3px rgba(255, 215, 0, 0.4);
+}
+.cat-card.level-6-card {
+    box-shadow: 0 10px 40px rgba(155, 48, 255, 0.2), 0 0 0 3px rgba(255, 215, 0, 0.5),
+                0 0 20px rgba(255, 215, 0, 0.3);
+    animation: legendaryGlow 3s ease-in-out infinite;
+}
+
+@keyframes legendaryGlow {
+    0%, 100% { box-shadow: 0 10px 40px rgba(155, 48, 255, 0.2), 0 0 0 3px rgba(255, 215, 0, 0.5), 0 0 20px rgba(255, 215, 0, 0.3); }
+    50% { box-shadow: 0 10px 40px rgba(155, 48, 255, 0.3), 0 0 0 3px rgba(255, 215, 0, 0.7), 0 0 35px rgba(255, 215, 0, 0.5); }
+}
+
+/* 等级提升发光动画 */
+.cat-card.level-up-glow {
+    animation: levelUpGlow 1s ease-out;
+}
+
+@keyframes levelUpGlow {
+    0% {
+        box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.8), 0 0 40px rgba(255, 183, 77, 0.6);
+        transform: scale(1.03);
+    }
+    50% {
+        box-shadow: 0 0 0 15px rgba(255, 215, 0, 0), 0 0 60px rgba(255, 183, 77, 0.8);
+        transform: scale(1.05);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(255, 215, 0, 0), 0 10px 40px var(--shadow-soft);
+        transform: scale(1);
+    }
+}
+
+/* 夜间模式下的成长等级卡片 */
+body.dark-mode .cat-card.level-4-card {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), 0 0 0 2px rgba(255, 183, 77, 0.3);
+}
+body.dark-mode .cat-card.level-5-card {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35), 0 0 0 3px rgba(255, 215, 0, 0.4);
+}
+body.dark-mode .cat-card.level-6-card {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), 0 0 0 3px rgba(255, 215, 0, 0.5),
+                0 0 20px rgba(255, 215, 0, 0.3);
+}
+
+/* 夜间模式成长标题徽章 */
+body.dark-mode .growth-title-badge {
+    color: white;
+}
+
+/* ================================================================
+   海报预览弹窗样式
+   ================================================================ */
+
+.poster-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(5px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.poster-modal-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.poster-modal-content {
+    position: relative;
+    background: var(--card-bg);
+    border-radius: 24px;
+    max-width: 650px;
+    width: 92%;
+    max-height: 92vh;
+    overflow-y: auto;
+    padding: 20px;
+    transform: scale(0.85) translateY(30px);
+    transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.poster-modal-overlay.active .poster-modal-content {
+    transform: scale(1) translateY(0);
+}
+
+.poster-modal-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: var(--primary-light);
+    color: var(--text-dark);
+    font-size: 1.3rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    z-index: 10;
+}
+
+.poster-modal-close:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: rotate(90deg);
+}
+
+/* 海报 Canvas */
+.poster-canvas {
+    width: 100%;
+    max-width: 600px;
+    height: auto;
+    border-radius: 16px;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.15);
+    display: block;
+}
+
+/* Loading 状态 */
+.poster-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    gap: 20px;
+}
+
+.poster-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid var(--primary-light);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: posterSpin 0.8s linear infinite;
+}
+
+@keyframes posterSpin {
+    to { transform: rotate(360deg); }
+}
+
+.poster-loading p {
+    color: var(--text-light);
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+/* 海报操作按钮 */
+.poster-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+    max-width: 600px;
+}
+
+.poster-action-btn {
+    flex: 1;
+    min-width: 140px;
+    padding: 14px 24px;
+    border: none;
+    border-radius: 25px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.3s ease;
+}
+
+.poster-action-btn.download {
+    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+    color: white;
+    box-shadow: 0 6px 20px var(--shadow-soft);
+}
+
+.poster-action-btn.download:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px var(--shadow-hover);
+}
+
+.poster-action-btn.copy {
+    background: var(--secondary-color);
+    color: var(--text-dark);
+    border: 2px solid var(--primary-light);
+}
+
+.poster-action-btn.copy:hover {
+    background: var(--primary-light);
+    border-color: var(--primary-color);
+}
+
+.poster-action-btn span {
+    font-size: 1.2rem;
+}
+
+/* 夜间模式海报弹窗 */
+body.dark-mode .poster-modal-content {
+    background: var(--card-bg);
+}
+
+body.dark-mode .poster-canvas {
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+}
+
+body.dark-mode .poster-action-btn.copy {
+    background: var(--secondary-color);
+    border-color: var(--primary-dark);
+    color: var(--text-dark);
+}
+
+body.dark-mode .poster-modal-close {
+    background: #3D3D3D;
+    color: var(--text-dark);
+}
+
+body.dark-mode .poster-loading p {
+    color: var(--text-light);
+}
+
+/* ================================================================
+   海报弹窗响应式
+   ================================================================ */
+
+@media (max-width: 768px) {
+    .poster-modal-content {
+        width: 96%;
+        padding: 12px;
+        border-radius: 18px;
+        max-height: 95vh;
+    }
+
+    .poster-canvas {
+        border-radius: 12px;
+    }
+
+    .poster-action-btn {
+        padding: 12px 18px;
+        font-size: 0.9rem;
+        min-width: 120px;
+    }
+}
+
+@media (max-width: 480px) {
+    .poster-modal-content {
+        width: 98%;
+        padding: 8px;
+    }
+
+    .poster-actions {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .poster-action-btn {
+        width: 100%;
+    }
+
+    .poster-modal-close {
+        width: 32px;
+        height: 32px;
+        font-size: 1.1rem;
+        top: 8px;
+        right: 8px;
     }
 }

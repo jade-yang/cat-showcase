@@ -171,12 +171,85 @@ let currentSort = 'default';
 let userLikes = {};         // 点赞数据 { catId: count }
 let userFavorites = [];      // 收藏列表 [catId, ...]
 let clickCounts = {};        // 彩蛋计数
+let isDarkMode = false;      // 夜间模式状态
 
 // ===== Chart.js 实例 =====
 let likesChartInstance = null;
 let favoritesChartInstance = null;
 let kpiPieChartInstance = null;
 let trendChartInstance = null;
+let levelDistChartInstance = null;
+
+// ===== 夜间模式功能 =====
+/**
+ * 初始化夜间模式
+ */
+function initTheme() {
+    // 从 localStorage 读取保存的主题状态
+    const savedTheme = localStorage.getItem('darkMode');
+    if (savedTheme === 'true') {
+        enableDarkMode();
+    }
+
+    // 设置主题切换按钮事件
+    const themeToggle = document.getElementById('themeToggle');
+    themeToggle.addEventListener('click', toggleTheme);
+}
+
+/**
+ * 切换主题
+ */
+function toggleTheme() {
+    if (isDarkMode) {
+        disableDarkMode();
+    } else {
+        enableDarkMode();
+    }
+    // 主题切换后重新渲染图表以适配颜色
+    renderDashboard();
+}
+
+/**
+ * 启用夜间模式
+ */
+function enableDarkMode() {
+    document.body.classList.add('dark-mode');
+    isDarkMode = true;
+    localStorage.setItem('darkMode', 'true');
+    updateThemeIcon();
+}
+
+/**
+ * 禁用夜间模式
+ */
+function disableDarkMode() {
+    document.body.classList.remove('dark-mode');
+    isDarkMode = false;
+    localStorage.setItem('darkMode', 'false');
+    updateThemeIcon();
+}
+
+/**
+ * 更新主题图标
+ */
+function updateThemeIcon() {
+    const themeIcon = document.getElementById('themeIcon');
+    themeIcon.textContent = isDarkMode ? '☀️' : '🌙';
+}
+
+// ===== 图表主题配置 =====
+/**
+ * 获取当前主题的图表颜色配置
+ */
+function getChartThemeColors() {
+    const isDark = document.body.classList.contains('dark-mode');
+    return {
+        textColor: isDark ? '#E8E8E8' : '#4A4A4A',
+        gridColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+        tickColor: isDark ? '#A0A0A0' : '#7A7A7A',
+        legendColor: isDark ? '#E8E8E8' : '#4A4A4A'
+    };
+}
 
 // ===== KPI 计算 =====
 /**
@@ -332,11 +405,42 @@ function initData() {
         }));
     }
 
+    // 加载彩蛋点击计数
+    const savedClicks = localStorage.getItem('easterEggClicks');
+    if (savedClicks) {
+        try { clickCounts = JSON.parse(savedClicks); } catch (e) { clickCounts = {}; }
+    }
+
     // 初始化视图追踪
     initViewTracking();
 }
 
 // ===== 工具函数 =====
+
+/**
+ * 刷新单张猫咪卡片（用于成长数据更新后局部刷新）
+ */
+function refreshCatCard(cat) {
+    var card = document.getElementById(getCardId(cat.id));
+    if (!card) return;
+
+    // 更新成长区域 HTML
+    var growthSection = card.querySelector('.growth-section');
+    if (growthSection && typeof renderGrowthUI === 'function') {
+        growthSection.outerHTML = renderGrowthUI(cat);
+    }
+
+    // 更新等级边框
+    var growthLevel = cat.growthLevel || 1;
+    card.classList.remove('level-4-card', 'level-5-card', 'level-6-card');
+    if (growthLevel >= 6) {
+        card.classList.add('level-6-card');
+    } else if (growthLevel >= 5) {
+        card.classList.add('level-5-card');
+    } else if (growthLevel >= 4) {
+        card.classList.add('level-4-card');
+    }
+}
 
 /**
  * 生成唯一ID
@@ -403,6 +507,10 @@ function renderDashboard() {
     if (favoritesChartInstance) favoritesChartInstance.destroy();
     if (kpiPieChartInstance) kpiPieChartInstance.destroy();
     if (trendChartInstance) trendChartInstance.destroy();
+    if (levelDistChartInstance) levelDistChartInstance.destroy();
+
+    // 获取主题颜色
+    const themeColors = getChartThemeColors();
 
     // 点赞排行榜图表
     const likesCtx = document.getElementById('likesChart').getContext('2d');
@@ -426,7 +534,15 @@ function renderDashboard() {
                 legend: { display: false }
             },
             scales: {
-                y: { beginAtZero: true }
+                x: {
+                    ticks: { color: themeColors.tickColor },
+                    grid: { color: themeColors.gridColor }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: { color: themeColors.tickColor },
+                    grid: { color: themeColors.gridColor }
+                }
             }
         }
     });
@@ -457,7 +573,15 @@ function renderDashboard() {
                 legend: { display: false }
             },
             scales: {
-                y: { beginAtZero: true, max: 1 }
+                x: {
+                    ticks: { color: themeColors.tickColor },
+                    grid: { color: themeColors.gridColor }
+                },
+                y: {
+                    beginAtZero: true, max: 1,
+                    ticks: { color: themeColors.tickColor },
+                    grid: { color: themeColors.gridColor }
+                }
             }
         }
     });
@@ -484,7 +608,10 @@ function renderDashboard() {
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    position: 'bottom'
+                    position: 'bottom',
+                    labels: {
+                        color: themeColors.legendColor
+                    }
                 }
             }
         }
@@ -507,7 +634,7 @@ function renderDashboard() {
                 tension: 0.4,
                 borderWidth: 2,
                 pointBackgroundColor: 'rgba(255, 155, 155, 1)',
-                pointBorderColor: '#fff',
+                pointBorderColor: document.body.classList.contains('dark-mode') ? '#2A2A2A' : '#fff',
                 pointBorderWidth: 2,
                 pointRadius: 5
             }]
@@ -519,10 +646,88 @@ function renderDashboard() {
                 legend: { display: false }
             },
             scales: {
-                y: { beginAtZero: true }
+                x: {
+                    ticks: { color: themeColors.tickColor },
+                    grid: { color: themeColors.gridColor }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: { color: themeColors.tickColor },
+                    grid: { color: themeColors.gridColor }
+                }
             }
         }
     });
+
+    // 猫咪等级分布饼图
+    var levelLabels = ['新手萌猫', '活跃小猫', '人气猫咪', '明星喵喵', '传说猫王', '宇宙喵神'];
+    var levelEmojis = ['🌱', '🐾', '⭐', '🌟', '👑', '🚀'];
+    var levelColors = [
+        'rgba(155, 200, 155, 0.8)',
+        'rgba(255, 183, 77, 0.8)',
+        'rgba(255, 155, 155, 0.8)',
+        'rgba(255, 107, 138, 0.8)',
+        'rgba(200, 100, 200, 0.8)',
+        'rgba(255, 215, 0, 0.9)'
+    ];
+    var levelCounts = [0, 0, 0, 0, 0, 0];
+    catsData.forEach(function (cat) {
+        var lvl = cat.growthLevel || 1;
+        var idx = Math.min(lvl - 1, 5);
+        levelCounts[idx]++;
+    });
+
+    // 过滤掉数量为 0 的等级
+    var filteredLabels = [];
+    var filteredData = [];
+    var filteredColors = [];
+    levelCounts.forEach(function (count, i) {
+        if (count > 0) {
+            filteredLabels.push(levelEmojis[i] + ' ' + levelLabels[i]);
+            filteredData.push(count);
+            filteredColors.push(levelColors[i]);
+        }
+    });
+
+    var levelDistCanvas = document.getElementById('levelDistChart');
+    if (levelDistCanvas) {
+        var levelDistCtx = levelDistCanvas.getContext('2d');
+        levelDistChartInstance = new Chart(levelDistCtx, {
+            type: 'doughnut',
+            data: {
+                labels: filteredLabels.length > 0 ? filteredLabels : ['暂无数据'],
+                datasets: [{
+                    data: filteredData.length > 0 ? filteredData : [1],
+                    backgroundColor: filteredColors.length > 0 ? filteredColors : ['rgba(200,200,200,0.5)'],
+                    borderWidth: 0,
+                    hoverOffset: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: themeColors.legendColor,
+                            padding: 12,
+                            font: { size: 12 }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function (ctx) {
+                                var total = ctx.dataset.data.reduce(function (a, b) { return a + b; }, 0);
+                                var pct = Math.round((ctx.parsed / total) * 100);
+                                return ctx.label + ': ' + ctx.parsed + ' 只 (' + pct + '%)';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
 }
 
 /**
@@ -601,6 +806,15 @@ function startRandomEvents() {
         const randomCat = catsData[Math.floor(Math.random() * catsData.length)];
         randomCat.views = (randomCat.views || 0) + Math.floor(Math.random() * 5) + 1;
         saveKPI();
+
+        // 更新成长数据
+        if (typeof checkAndTriggerLevelUp === 'function') {
+            var result = checkAndTriggerLevelUp(randomCat);
+            if (result && result.didLevelUp) {
+                refreshCatCard(randomCat);
+            }
+        }
+
         renderDashboard();
         renderRanking();
     }
@@ -698,71 +912,91 @@ function renderCats() {
  * 创建单个猫咪卡片
  */
 function createCatCard(cat, index) {
-    const card = document.createElement('div');
-    card.className = 'cat-card';
+    var card = document.createElement('div');
+    var growthLevel = cat.growthLevel || 1;
+    var levelClass = growthLevel >= 6 ? 'level-6-card' :
+                     growthLevel >= 5 ? 'level-5-card' :
+                     growthLevel >= 4 ? 'level-4-card' : '';
+
+    card.className = 'cat-card' + (levelClass ? ' ' + levelClass : '');
     card.id = getCardId(cat.id);
-    card.style.animationDelay = `${index * 0.08}s`;
+    card.style.animationDelay = (index * 0.08) + 's';
     card.dataset.catId = cat.id;
 
-    const likesCount = getLikesCount(cat);
-    const isFav = isFavorited(cat.id);
-    const traitsHTML = cat.traits.map(trait =>
-        `<span class="cat-tag">${trait}</span>`
-    ).join('');
+    var likesCount = getLikesCount(cat);
+    var isFav = isFavorited(cat.id);
+    var traitsHTML = cat.traits.map(function (trait) {
+        return '<span class="cat-tag">' + trait + '</span>';
+    }).join('');
 
-    let badgeHTML = '';
+    var badgeHTML = '';
     if (cat.uploadedByUser) {
         badgeHTML = '<div class="cat-user-badge">用户上传</div>';
     }
 
-    card.innerHTML = `
-        <div class="cat-image-container">
-            ${badgeHTML}
-            <img class="cat-image"
-                 src="${cat.img}"
-                 alt="${cat.name} - ${cat.breed}，${cat.desc?.slice(0, 30) || ''}..."
-                 loading="lazy"
-                 onerror="this.src='https://placehold.co/400x300/FFE8E8/FF9B9B?text=${encodeURIComponent(cat.name)}'">
-            <img class="cat-image-alt"
-                 src="${cat.imgAlt || cat.img}"
-                 alt="${cat.name}的另一种表情"
-                 loading="lazy">
-            <div class="cat-image-overlay"></div>
-            <div class="cat-like-count">
-                <span>❤️</span> ${likesCount}
-            </div>
-            <div class="cat-actions">
-                <button class="action-btn like-btn"
-                        data-cat-id="${cat.id}"
-                        title="点赞">
-                    <span>👍</span>
-                </button>
-                <button class="action-btn favorite-btn ${isFav ? 'favorited' : ''}"
-                        data-cat-id="${cat.id}"
-                        title="${isFav ? '取消收藏' : '收藏'}">
-                    <span>${isFav ? '❤️' : '🤍'}</span>
-                </button>
-                <button class="action-btn share-btn"
-                        data-cat-id="${cat.id}"
-                        title="分享">
-                    <span>📤</span>
-                </button>
-            </div>
-            <span class="cat-click-hint">点击查看详情</span>
-        </div>
-        <div class="cat-info">
-            <div class="cat-header">
-                <h3 class="cat-name">${cat.name}</h3>
-            </div>
-            <p class="cat-breed">${cat.breed}</p>
-            <p class="cat-age">🎂 ${cat.age}岁</p>
-            <div class="cat-tags">${traitsHTML}</div>
-            <div class="cat-favorites">
-                <span>🎾 ${cat.favorite || '未知'}</span>
-            </div>
-            ${renderGrowthProgress(cat)}
-        </div>
-    `;
+    // 使用新的成长 UI（如果 growth.js 已加载），否则回退到旧的
+    var growthHTML = '';
+    if (typeof renderGrowthUI === 'function') {
+        growthHTML = renderGrowthUI(cat);
+    } else if (typeof renderGrowthProgress === 'function') {
+        growthHTML = renderGrowthProgress(cat);
+    }
+
+    card.innerHTML = '' +
+        '<div class="cat-image-container">' +
+            badgeHTML +
+            '<img class="cat-image"' +
+            '     src="' + cat.img + '"' +
+            '     alt="' + cat.name + ' - ' + cat.breed + '"' +
+            '     loading="lazy"' +
+            '     onerror="this.src=\'https://placehold.co/400x300/FFE8E8/FF9B9B?text=' + encodeURIComponent(cat.name) + '\'">' +
+            '<img class="cat-image-alt"' +
+            '     src="' + (cat.imgAlt || cat.img) + '"' +
+            '     alt="' + cat.name + '的另一种表情"' +
+            '     loading="lazy">' +
+            '<div class="cat-image-overlay"></div>' +
+            '<div class="cat-like-count">' +
+                '<span>❤️</span> ' + likesCount +
+            '</div>' +
+            '<div class="cat-actions">' +
+                '<button class="action-btn like-btn"' +
+                '        data-cat-id="' + cat.id + '"' +
+                '        title="点赞">' +
+                    '<span>👍</span>' +
+                '</button>' +
+                '<button class="action-btn favorite-btn' + (isFav ? ' favorited' : '') + '"' +
+                '        data-cat-id="' + cat.id + '"' +
+                '        title="' + (isFav ? '取消收藏' : '收藏') + '">' +
+                    '<span>' + (isFav ? '❤️' : '🤍') + '</span>' +
+                '</button>' +
+                '<button class="action-btn share-btn"' +
+                '        data-cat-id="' + cat.id + '"' +
+                '        title="分享">' +
+                    '<span>📤</span>' +
+                '</button>' +
+                '<button class="action-btn poster-btn"' +
+                '        data-cat-id="' + cat.id + '"' +
+                '        title="生成分享海报"' +
+                '        style="font-size:0.9rem;">' +
+                    '<span>🖼️</span>' +
+                '</button>' +
+            '</div>' +
+            '<span class="cat-click-hint">点击查看详情</span>' +
+            '<div class="card-shimmer"></div>' +
+            '<div class="hover-paw">🐾</div>' +
+        '</div>' +
+        '<div class="cat-info">' +
+            '<div class="cat-header">' +
+                '<h3 class="cat-name">' + cat.name + '</h3>' +
+            '</div>' +
+            '<p class="cat-breed">' + cat.breed + '</p>' +
+            '<p class="cat-age">🎂 ' + cat.age + '岁</p>' +
+            '<div class="cat-tags">' + traitsHTML + '</div>' +
+            '<div class="cat-favorites">' +
+                '<span>🎾 ' + (cat.favorite || '未知') + '</span>' +
+            '</div>' +
+            growthHTML +
+        '</div>';
 
     setupCardEvents(card, cat);
 
@@ -800,16 +1034,28 @@ function setupCardEvents(card, cat) {
         shareCat(cat, shareBtn);
     });
 
-    // 彩蛋：连续点击头像触发
+    // 海报生成按钮
+    const posterBtn = card.querySelector('.poster-btn');
+    if (posterBtn && typeof openPosterModal === 'function') {
+        posterBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openPosterModal(cat);
+        });
+    }
+
+    // 彩蛋：连续点击头像触发（5次连击）
     const imageContainer = card.querySelector('.cat-image-container');
     imageContainer.addEventListener('click', (e) => {
         if (e.target.closest('.action-btn')) return;
 
         clickCounts[cat.id] = (clickCounts[cat.id] || 0) + 1;
+        // 持久化彩蛋进度（即使未触发也保存）
+        localStorage.setItem('easterEggClicks', JSON.stringify(clickCounts));
 
         if (clickCounts[cat.id] >= 5) {
             triggerEasterEgg(cat.name, card);
             clickCounts[cat.id] = 0;
+            localStorage.setItem('easterEggClicks', JSON.stringify(clickCounts));
         }
 
         card.classList.add('playing');
@@ -828,13 +1074,23 @@ function toggleLike(catId, btn, card) {
     btn.querySelector('span').textContent = '❤️';
 
     const likeCount = card.querySelector('.cat-like-count');
-    likeCount.innerHTML = `<span>❤️</span> ${getLikesCount({ id: catId, likes: 0 })}`;
+    likeCount.innerHTML = '<span>❤️</span> ' + getLikesCount({ id: catId, likes: 0 });
 
     // 动画效果
     btn.style.transform = 'scale(1.3)';
-    setTimeout(() => {
+    setTimeout(function () {
         btn.style.transform = '';
     }, 300);
+
+    // 更新成长数据
+    var cat = catsData.find(function (c) { return c.id === catId; });
+    if (cat && typeof checkAndTriggerLevelUp === 'function') {
+        var result = checkAndTriggerLevelUp(cat);
+        // 如果升级了，更新卡片 UI
+        if (result && result.didLevelUp) {
+            refreshCatCard(cat);
+        }
+    }
 
     updateFooterStats();
 }
@@ -861,6 +1117,15 @@ function toggleFavorite(catId, btn, card) {
     }
     localStorage.setItem('userFavorites', JSON.stringify(userFavorites));
 
+    // 更新成长数据
+    var cat = catsData.find(function (c) { return c.id === catId; });
+    if (cat && typeof checkAndTriggerLevelUp === 'function') {
+        var result = checkAndTriggerLevelUp(cat);
+        if (result && result.didLevelUp) {
+            refreshCatCard(cat);
+        }
+    }
+
     // 如果当前在"只看收藏"筛选，更新显示
     if (currentFilter === 'favorited') {
         renderCats();
@@ -881,6 +1146,14 @@ function shareCat(cat, btn) {
     if (!cat.shares) cat.shares = 0;
     cat.shares++;
     saveKPI();
+
+    // 更新成长数据
+    if (typeof checkAndTriggerLevelUp === 'function') {
+        var result = checkAndTriggerLevelUp(cat);
+        if (result && result.didLevelUp) {
+            refreshCatCard(cat);
+        }
+    }
 
     if (navigator.share) {
         navigator.share({
@@ -986,6 +1259,9 @@ function openModal(cat) {
             <button class="modal-share-btn copy" id="modalCopyBtn">
                 <span>📋</span> 复制链接
             </button>
+            <button class="modal-share-btn copy" id="modalPosterBtn" style="background: linear-gradient(135deg, #FF9B9B, #FFB26B); color: white; border: none;">
+                <span>🖼️</span> 生成分享海报
+            </button>
         </div>
     `;
 
@@ -1035,6 +1311,15 @@ function openModal(cat) {
             }, 2000);
         });
     });
+
+    // Modal 内的海报按钮
+    var modalPosterBtn = document.getElementById('modalPosterBtn');
+    if (modalPosterBtn && typeof openPosterModal === 'function') {
+        modalPosterBtn.addEventListener('click', function() {
+            closeModal();
+            setTimeout(function () { openPosterModal(cat); }, 350);
+        });
+    }
 
     overlay.classList.add('active');
     document.body.style.overflow = 'hidden';
@@ -1128,11 +1413,14 @@ function setupNavigation() {
                 case 'cats':
                     targetId = 'cats-section';
                     break;
+                case 'dashboard':
+                    targetId = 'dashboard-section';
+                    break;
+                case 'ranking':
+                    targetId = 'ranking-section';
+                    break;
                 case 'upload':
                     targetId = 'upload-section';
-                    break;
-                case 'favorites':
-                    targetId = 'favorites-section';
                     break;
             }
 
@@ -1144,19 +1432,41 @@ function setupNavigation() {
         });
     });
 
+    // 点击页面其他区域关闭移动端菜单
+    document.addEventListener('click', (e) => {
+        if (!navToggle.contains(e.target) && !navMenu.contains(e.target)) {
+            navToggle.classList.remove('active');
+            navMenu.classList.remove('active');
+        }
+    });
+
+    // ESC 关闭移动端菜单
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && navMenu.classList.contains('active')) {
+            navToggle.classList.remove('active');
+            navMenu.classList.remove('active');
+        }
+    });
+
     // 滚动时更新导航状态
     window.addEventListener('scroll', () => {
         const scrollY = window.scrollY;
-        const sections = ['hero', 'cats-section', 'upload-section', 'favorites-section'];
+        const sections = [
+            { id: 'hero', name: 'hero' },
+            { id: 'cats-section', name: 'cats' },
+            { id: 'dashboard-section', name: 'dashboard' },
+            { id: 'ranking-section', name: 'ranking' },
+            { id: 'upload-section', name: 'upload' }
+        ];
 
-        for (const sectionId of sections) {
-            const section = document.getElementById(sectionId);
-            if (section) {
-                const offsetTop = section.offsetTop - 100;
-                const offsetBottom = offsetTop + section.offsetHeight;
+        for (const section of sections) {
+            const el = document.getElementById(section.id);
+            if (el) {
+                const offsetTop = el.offsetTop - 100;
+                const offsetBottom = offsetTop + el.offsetHeight;
                 if (scrollY >= offsetTop && scrollY < offsetBottom) {
                     navLinks.forEach(l => l.classList.remove('active'));
-                    document.querySelector(`[data-section="${sectionId === 'cats-section' ? 'cats' : sectionId === 'upload-section' ? 'upload' : sectionId === 'favorites-section' ? 'favorites' : 'hero'}"]`)?.classList.add('active');
+                    document.querySelector(`[data-section="${section.name}"]`)?.classList.add('active');
                     break;
                 }
             }
@@ -1188,27 +1498,45 @@ function highlightRandomCat() {
 // ===== 彩蛋功能 =====
 
 function triggerEasterEgg(catName, card) {
-    // 卡片摇晃
-    card.classList.add('shaking');
-    setTimeout(() => card.classList.remove('shaking'), 500);
+    // 随机选择动画效果
+    var effects = ['shaking', 'shaking', 'shaking', 'bounce-card'];
+    var chosenEffect = effects[Math.floor(Math.random() * effects.length)];
+
+    if (chosenEffect === 'bounce-card') {
+        card.classList.add('bounce-card');
+        setTimeout(function () { card.classList.remove('bounce-card'); }, 800);
+    } else {
+        card.classList.add('shaking');
+        setTimeout(function () { card.classList.remove('shaking'); }, 500);
+    }
 
     // 创建粒子动画
     createEasterEggParticles(card);
 
-    // 显示彩蛋提示
-    const toast = document.getElementById('easterEggToast');
-    const messages = [
-        `喵～${catName}好喜欢你！`,
-        `${catName}打了个哈欠~ 😽`,
-        `哇！你是${catName}的超级粉丝！`,
-        `${catName}想跟你玩！`,
-        `🎉 隐藏猫咪魅力已解锁！`,
-        `${catName}撒了一地猫粮~ 🌟`
+    // 显示彩蛋提示（更多随机消息）
+    var toast = document.getElementById('easterEggToast');
+    var messages = [
+        '喵～' + catName + '好喜欢你！',
+        catName + '打了个哈欠~ 😽',
+        '哇！你是' + catName + '的超级粉丝！',
+        catName + '想跟你玩！',
+        '🎉 隐藏猫咪魅力已解锁！',
+        catName + '撒了一地猫粮~ 🌟',
+        '✨ ' + catName + '变成了魔法猫咪！',
+        '🐟 ' + catName + '送你一条小鱼干！',
+        '💫 ' + catName + '今天心情超好！',
+        '🎀 ' + catName + '戴上了蝴蝶结！',
+        '🌈 ' + catName + '召唤了彩虹！',
+        '🦋 蝴蝶围着' + catName + '飞舞！'
     ];
     toast.querySelector('.toast-text').textContent = messages[Math.floor(Math.random() * messages.length)];
 
     toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 3000);
+    setTimeout(function () { toast.classList.remove('show'); }, 3000);
+
+    // 记录彩蛋发现总次数
+    var totalDiscoveries = parseInt(localStorage.getItem('easterEggDiscoveries') || '0', 10) + 1;
+    localStorage.setItem('easterEggDiscoveries', totalDiscoveries.toString());
 }
 
 function createEasterEggParticles(card) {
@@ -1217,16 +1545,17 @@ function createEasterEggParticles(card) {
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
 
-    const particles = ['🐾', '💖', '✨', '🌟', '💕', '🐱'];
-    const emojis = ['喵~', '喵!', '😺', '💗'];
+    const particles = ['🐾', '💖', '✨', '🌟', '💕', '🐱', '🧶', '🐟', '🎀', '🦋', '🌈', '💫', '🎪', '💝'];
+    const emojis = ['喵~', '喵!', '😺', '💗', '喵呜~', '😻', '🎉', '💖'];
 
-    for (let i = 0; i < 20; i++) {
-        const particle = document.createElement('div');
+    var particleCount = 25;
+    for (var i = 0; i < particleCount; i++) {
+        var particle = document.createElement('div');
         particle.className = 'particle';
         particle.textContent = particles[Math.floor(Math.random() * particles.length)];
 
-        const angle = (Math.PI * 2 * i) / 20;
-        const distance = 100 + Math.random() * 100;
+        var angle = (Math.PI * 2 * i) / particleCount;
+        var distance = 80 + Math.random() * 140;
         const tx = Math.cos(angle) * distance;
         const ty = Math.sin(angle) * distance;
 
@@ -1427,6 +1756,14 @@ function setupUploadForm() {
         // 添加到数据
         catsData.push(newCat);
 
+        // 初始化新猫咪的成长数据
+        if (typeof updateCatGrowth === 'function') {
+            updateCatGrowth(newCat);
+        }
+        if (typeof saveGrowthData === 'function') {
+            saveGrowthData();
+        }
+
         // 重新渲染
         renderCats();
 
@@ -1477,6 +1814,7 @@ function renderFavoritesSection() {
 // ===== 提示信息 =====
 
 function showToast(message, type = 'info') {
+    const isMobile = window.innerWidth < 600;
     // 创建临时toast
     const toast = document.createElement('div');
     toast.style.cssText = `
@@ -1486,12 +1824,14 @@ function showToast(message, type = 'info') {
         transform: translate(-50%, -50%) scale(0);
         background: ${type === 'success' ? 'linear-gradient(135deg, #7BC67B, #5FBF5F)' : type === 'error' ? 'linear-gradient(135deg, #FF6B6B, #E55555)' : 'linear-gradient(135deg, #FF9B9B, #FFB26B)'};
         color: white;
-        padding: 18px 35px;
+        padding: ${isMobile ? '14px 22px' : '18px 35px'};
         border-radius: 25px;
-        font-size: 1.1rem;
+        font-size: ${isMobile ? '0.95rem' : '1.1rem'};
         font-weight: 500;
         z-index: 5000;
         opacity: 0;
+        max-width: ${isMobile ? '85vw' : 'none'};
+        text-align: center;
         transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         box-shadow: 0 10px 40px rgba(0,0,0,0.2);
     `;
@@ -1525,13 +1865,18 @@ function initYarnGame() {
 
     let isDragging = false;
     let startX, startY, initialX, initialY;
-    let ballX = window.innerWidth - 100;
-    let ballY = window.innerHeight - 150;
+    const BALL_SIZE = 70;
+    let ballX, ballY;
 
-    yarnBall.style.right = 'auto';
-    yarnBall.style.bottom = 'auto';
-    yarnBall.style.left = ballX + 'px';
-    yarnBall.style.top = ballY + 'px';
+    function positionBall() {
+        ballX = Math.min(window.innerWidth - BALL_SIZE - 15, Math.max(0, window.innerWidth - 100));
+        ballY = Math.min(window.innerHeight - BALL_SIZE - 15, Math.max(0, window.innerHeight - 150));
+        yarnBall.style.right = 'auto';
+        yarnBall.style.bottom = 'auto';
+        yarnBall.style.left = ballX + 'px';
+        yarnBall.style.top = ballY + 'px';
+    }
+    positionBall();
 
     yarnBall.addEventListener('mousedown', startDrag);
     yarnBall.addEventListener('touchstart', startDrag, { passive: false });
@@ -1599,6 +1944,14 @@ function initYarnGame() {
             randomCat.gameInteractions = (randomCat.gameInteractions || 0) + 1;
             saveKPI();
 
+            // 更新成长数据
+            if (typeof checkAndTriggerLevelUp === 'function') {
+                var result = checkAndTriggerLevelUp(randomCat);
+                if (result && result.didLevelUp) {
+                    refreshCatCard(randomCat);
+                }
+            }
+
             // 显示游戏提示
             gameToastText.textContent = `${randomCat.name} 获得 +1 互动！${combo > 1 ? `连击 x${combo}！` : ''}`;
             gameToast.classList.add('show');
@@ -1643,9 +1996,22 @@ function updateFooterStats() {
     const yarnScore = localStorage.getItem('yarnScore') || '0';
     const userCatsCount = catsData.filter(c => c.uploadedByUser).length;
 
-    statsEl.innerHTML = `
-        ❤️ 收藏 ${favCount} 只 · 👍 点赞 ${totalLikes} 次 · 🧶 毛线球 ${yarnScore} 分 · 📷 上传 ${userCatsCount} 只
-    `;
+    // 找到最高等级的猫咪
+    var highestCat = null;
+    catsData.forEach(function (c) {
+        if (!highestCat || (c.growthLevel || 1) > (highestCat.growthLevel || 1)) {
+            highestCat = c;
+        }
+    });
+    var topCatInfo = '';
+    if (highestCat && highestCat.growthLevel && highestCat.growthLevel >= 3) {
+        var lvl = highestCat.growthLevel || 1;
+        var emoji = highestCat.growthEmoji || '⭐';
+        topCatInfo = ' · ' + emoji + ' 最高等级: ' + highestCat.name + ' Lv.' + lvl;
+    }
+
+    statsEl.innerHTML =
+        '❤️ 收藏 ' + favCount + ' 只 · 👍 点赞 ' + totalLikes + ' 次 · 🧶 毛线球 ' + yarnScore + ' 分 · 📷 上传 ' + userCatsCount + ' 只' + topCatInfo;
 }
 
 // ===== 平滑滚动 =====
@@ -1683,8 +2049,16 @@ function checkUrlParams() {
 // ===== 初始化 =====
 
 document.addEventListener('DOMContentLoaded', () => {
+    // 初始化主题（必须在其他渲染之前）
+    initTheme();
+
     // 初始化数据
     initData();
+
+    // 初始化成长数据（必须在 initData 之后）
+    if (typeof initGrowthData === 'function') {
+        initGrowthData();
+    }
 
     // 渲染猫咪卡片
     renderCats();
@@ -1716,10 +2090,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.id === 'modalOverlay') closeModal();
     });
 
-    // ESC 关闭 Modal
+    // ESC 关闭 Modal（海报弹窗打开时不关闭猫咪详情弹窗）
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeModal();
+        if (e.key === 'Escape') {
+            var posterOverlay = document.getElementById('posterModalOverlay');
+            if (posterOverlay && posterOverlay.classList.contains('active')) {
+                return; // poster.js 自己处理
+            }
+            closeModal();
+        }
     });
+
+    // 初始化海报弹窗
+    if (typeof initPosterModal === 'function') {
+        initPosterModal();
+    }
 
     // 初始化毛线球游戏
     initYarnGame();
@@ -1742,6 +2127,26 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
             if (e.key === 'r') highlightRandomCat();
         }
+    });
+
+    // 窗口大小改变时的处理（防抖）
+    let resizeDebounce;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeDebounce);
+        resizeDebounce = setTimeout(() => {
+            // 重新渲染图表以适配新尺寸
+            renderDashboard();
+            // 确保毛线球在可视区域内
+            const yarnBallEl = document.getElementById('yarnBall');
+            if (yarnBallEl) {
+                const rect = yarnBallEl.getBoundingClientRect();
+                if (rect.left < 0 || rect.top < 0 ||
+                    rect.right > window.innerWidth || rect.bottom > window.innerHeight) {
+                    yarnBallEl.style.left = Math.min(window.innerWidth - 85, Math.max(0, window.innerWidth - 100)) + 'px';
+                    yarnBallEl.style.top = Math.min(window.innerHeight - 85, Math.max(0, window.innerHeight - 150)) + 'px';
+                }
+            }
+        }, 250);
     });
 });
 
