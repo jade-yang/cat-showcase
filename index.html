@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>猫咪图鉴 - 发现每一只猫的独特可爱</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <a href="#hero" class="nav-logo">
+                <span class="nav-logo-icon">🐱</span>
+                <span class="nav-logo-text">猫咪图鉴</span>
+            </a>
+            <button class="nav-toggle" id="navToggle" aria-label="切换菜单">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <div class="nav-menu" id="navMenu">
+                <a href="#hero" class="nav-link active" data-section="hero">首页</a>
+                <a href="#cats-section" class="nav-link" data-section="cats">猫咪图鉴</a>
+                <a href="#dashboard-section" class="nav-link" data-section="dashboard">数据面板</a>
+                <a href="#ranking-section" class="nav-link" data-section="ranking">排行榜</a>
+                <a href="#upload-section" class="nav-link" data-section="upload">上传新猫咪</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 装饰元素 -->
+    <div class="decorations">
+        <div class="paw paw-1">🐾</div>
+        <div class="paw paw-2">🐾</div>
+        <div class="paw paw-3">🐾</div>
+        <div class="paw paw-4">🐾</div>
+        <div class="yarn-ball yarn-1">🧶</div>
+        <div class="yarn-ball yarn-2">🧶</div>
+        <div class="yarn-ball yarn-3">🧶</div>
+        <div class="cat-ear-deco ear-deco-1"></div>
+        <div class="cat-ear-deco ear-deco-2"></div>
+    </div>
+
+    <!-- 浮动毛线球游戏 -->
+    <div class="yarn-game" id="yarnGame">
+        <div class="yarn-ball-game" id="yarnBall" title="点击抓毛线球！">
+            <div class="yarn-string"></div>
+        </div>
+        <div class="yarn-score">
+            <span class="score-label">抓到的次数：</span>
+            <span class="score-value" id="yarnScore">0</span>
+        </div>
+        <!-- 连击显示 -->
+        <div class="combo-display" id="comboDisplay" style="display: none;">
+            <span class="combo-count" id="comboCount">0</span>
+            <span class="combo-text">连击!</span>
+        </div>
+    </div>
+
+    <!-- Hero 区域 -->
+    <section class="hero" id="hero">
+        <div class="hero-bg">
+            <div class="floating-cat cat-1">🐱</div>
+            <div class="floating-cat cat-2">😺</div>
+            <div class="floating-cat cat-3">😸</div>
+        </div>
+        <div class="hero-content">
+            <div class="hero-icon">
+                <div class="cat-face">
+                    <div class="ear ear-left"></div>
+                    <div class="ear ear-right"></div>
+                    <div class="face-main">🐱</div>
+                </div>
+            </div>
+            <h1 class="hero-title">猫咪图鉴</h1>
+            <p class="hero-subtitle">发现每一只猫的独特可爱</p>
+            <div class="hero-actions">
+                <a href="#cats-section" class="hero-button">
+                    <span>开始浏览</span>
+                    <svg class="button-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 5v14M5 12l7 7 7-7"/>
+                    </svg>
+                </a>
+                <button class="random-btn" id="randomBtn" title="随机选一只猫">
+                    <span>🎲</span> 今日推荐
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- 搜索和排序区域 -->
+    <section class="search-section">
+        <div class="search-container">
+            <div class="search-box">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="m21 21-4.35-4.35"/>
+                </svg>
+                <input type="text" id="searchInput" placeholder="搜索猫咪名字或品种...">
+                <button class="clear-search" id="clearSearch" style="display: none;">✕</button>
+            </div>
+            <div class="sort-container">
+                <label for="sortSelect">排序：</label>
+                <select id="sortSelect">
+                    <option value="default">默认顺序</option>
+                    <option value="name">按名字 A-Z</option>
+                    <option value="name-desc">按名字 Z-A</option>
+                    <option value="age">按年龄 小→大</option>
+                    <option value="age-desc">按年龄 大→小</option>
+                    <option value="likes">按点赞数</option>
+                    <option value="score">按热度</option>
+                </select>
+            </div>
+        </div>
+    </section>
+
+    <!-- 筛选区域 -->
+    <section class="filter-section" id="cats-section">
+        <h2 class="filter-title">选择你喜欢的性格</h2>
+        <div class="filter-buttons">
+            <button class="filter-btn active" data-filter="all">全部</button>
+            <button class="filter-btn" data-filter="粘人">粘人</button>
+            <button class="filter-btn" data-filter="活泼">活泼</button>
+            <button class="filter-btn" data-filter="安静">安静</button>
+            <button class="filter-btn" data-filter="爱睡觉">爱睡觉</button>
+            <button class="filter-btn" data-filter="胆小">胆小</button>
+            <button class="filter-btn" data-filter="好奇">好奇</button>
+            <button class="filter-btn" data-filter="贪吃">贪吃</button>
+            <button class="filter-btn favorited" data-filter="favorited">
+                <span class="favorited-icon">❤️</span> 只看收藏
+            </button>
+        </div>
+        <p class="cat-count" id="catCount">共 12 只猫咪</p>
+    </section>
+
+    <!-- 猫咪卡片区域 -->
+    <section class="cats-gallery">
+        <div class="cats-grid" id="catsGrid">
+            <!-- 卡片将通过 JavaScript 动态生成 -->
+        </div>
+        <div class="empty-message" id="emptyMessage" style="display: none;">
+            <div class="empty-icon">😿</div>
+            <p>没有找到匹配的猫咪，换个关键词试试吧～</p>
+        </div>
+    </section>
+
+    <!-- KPI 数据面板区域 -->
+    <section class="dashboard-section" id="dashboard-section">
+        <div class="dashboard-container">
+            <div class="dashboard-header">
+                <div class="dashboard-icon">📊</div>
+                <h2 class="dashboard-title">猫咪数据面板</h2>
+                <p class="dashboard-subtitle">实时掌握每一只猫的动态</p>
+            </div>
+
+            <!-- 总览卡片 -->
+            <div class="kpi-overview">
+                <div class="kpi-card glass-card">
+                    <div class="kpi-icon">🐱</div>
+                    <div class="kpi-value" id="totalCats">12</div>
+                    <div class="kpi-label">总猫咪数</div>
+                </div>
+                <div class="kpi-card glass-card">
+                    <div class="kpi-icon">👍</div>
+                    <div class="kpi-value" id="totalLikes">0</div>
+                    <div class="kpi-label">总点赞数</div>
+                </div>
+                <div class="kpi-card glass-card">
+                    <div class="kpi-icon">❤️</div>
+                    <div class="kpi-value" id="totalFavorites">0</div>
+                    <div class="kpi-label">总收藏数</div>
+                </div>
+                <div class="kpi-card glass-card">
+                    <div class="kpi-icon">📤</div>
+                    <div class="kpi-value" id="totalShares">0</div>
+                    <div class="kpi-label">总分享数</div>
+                </div>
+                <div class="kpi-card glass-card">
+                    <div class="kpi-icon">👀</div>
+                    <div class="kpi-value" id="totalViews">0</div>
+                    <div class="kpi-label">总浏览量</div>
+                </div>
+                <div class="kpi-card glass-card">
+                    <div class="kpi-icon">🎮</div>
+                    <div class="kpi-value" id="totalGameInteractions">0</div>
+                    <div class="kpi-label">总互动数</div>
+                </div>
+            </div>
+
+            <!-- 图表区域 -->
+            <div class="charts-grid">
+                <div class="chart-card glass-card">
+                    <h3 class="chart-title">📈 点赞排行榜 TOP 10</h3>
+                    <div class="chart-container">
+                        <canvas id="likesChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card glass-card">
+                    <h3 class="chart-title">🌟 收藏排行榜 TOP 10</h3>
+                    <div class="chart-container">
+                        <canvas id="favoritesChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card glass-card">
+                    <h3 class="chart-title">📊 KPI 分布饼图</h3>
+                    <div class="chart-container">
+                        <canvas id="kpiPieChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card glass-card wide-chart">
+                    <h3 class="chart-title">📉 热度趋势折线图</h3>
+                    <div class="chart-container wide">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 猫咪排行榜区域 -->
+    <section class="ranking-section" id="ranking-section">
+        <div class="ranking-container">
+            <div class="ranking-header">
+                <div class="ranking-icon">🏆</div>
+                <h2 class="ranking-title">猫咪热度排行榜</h2>
+                <p class="ranking-subtitle">实时更新，看看谁是最受欢迎的猫咪！</p>
+            </div>
+            <div class="ranking-list" id="rankingList">
+                <!-- 排行榜将通过 JavaScript 动态生成 -->
+            </div>
+        </div>
+    </section>
+
+    <!-- 上传新猫咪区域 -->
+    <section class="upload-section" id="upload-section">
+        <div class="upload-container">
+            <div class="upload-header">
+                <div class="upload-icon">📷</div>
+                <h2 class="upload-title">上传新猫咪</h2>
+                <p class="upload-subtitle">让更多人认识你的猫咪小伙伴吧！</p>
+            </div>
+            <form class="upload-form" id="uploadForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="catName">猫咪名字 <span class="required">*</span></label>
+                        <input type="text" id="catName" name="name" placeholder="例如：小花" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="catBreed">品种 <span class="required">*</span></label>
+                        <input type="text" id="catBreed" name="breed" placeholder="例如：布偶猫" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="catAge">年龄（岁）<span class="required">*</span></label>
+                        <input type="number" id="catAge" name="age" placeholder="例如：2" min="0" max="30" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="catFavorite">喜欢的玩具/食物</label>
+                        <input type="text" id="catFavorite" name="favorite" placeholder="例如：毛线球、三文鱼">
+                    </div>
+                </div>
+                <div class="form-group full-width">
+                    <label>性格标签 <span class="required">*</span>（可多选）</label>
+                    <div class="tags-selector">
+                        <label class="tag-checkbox">
+                            <input type="checkbox" name="traits" value="粘人">
+                            <span class="tag-label">粘人</span>
+                        </label>
+                        <label class="tag-checkbox">
+                            <input type="checkbox" name="traits" value="活泼">
+                            <span class="tag-label">活泼</span>
+                        </label>
+                        <label class="tag-checkbox">
+                            <input type="checkbox" name="traits" value="安静">
+                            <span class="tag-label">安静</span>
+                        </label>
+                        <label class="tag-checkbox">
+                            <input type="checkbox" name="traits" value="爱睡觉">
+                            <span class="tag-label">爱睡觉</span>
+                        </label>
+                        <label class="tag-checkbox">
+                            <input type="checkbox" name="traits" value="胆小">
+                            <span class="tag-label">胆小</span>
+                        </label>
+                        <label class="tag-checkbox">
+                            <input type="checkbox" name="traits" value="好奇">
+                            <span class="tag-label">好奇</span>
+                        </label>
+                        <label class="tag-checkbox">
+                            <input type="checkbox" name="traits" value="贪吃">
+                            <span class="tag-label">贪吃</span>
+                        </label>
+                    </div>
+                    <span class="validation-msg" id="traitsValidation">请至少选择一个性格标签</span>
+                </div>
+                <div class="form-group full-width">
+                    <label for="catDesc">简短介绍</label>
+                    <textarea id="catDesc" name="desc" placeholder="介绍一下你的猫咪吧..." rows="3"></textarea>
+                </div>
+                <div class="form-group full-width">
+                    <label>猫咪图片</label>
+                    <div class="image-upload-container">
+                        <div class="image-option">
+                            <label class="upload-method-btn">
+                                <input type="radio" name="imageMethod" value="url" checked>
+                                <span>使用图片URL</span>
+                            </label>
+                            <label class="upload-method-btn">
+                                <input type="radio" name="imageMethod" value="upload">
+                                <span>上传本地图片</span>
+                            </label>
+                        </div>
+                        <div class="image-url-input" id="imageUrlInput">
+                            <input type="url" id="catImageUrl" name="imageUrl" placeholder="粘贴图片地址，例如：https://example.com/cat.jpg">
+                        </div>
+                        <div class="image-file-input" id="imageFileInput" style="display: none;">
+                            <div class="file-upload-area" id="fileUploadArea">
+                                <input type="file" id="catImageFile" name="imageFile" accept="image/*" style="display: none;">
+                                <div class="upload-placeholder" id="uploadPlaceholder">
+                                    <span class="upload-icon-small">📁</span>
+                                    <span>点击选择图片或拖拽到此处</span>
+                                </div>
+                                <img id="imagePreview" class="image-preview" style="display: none;">
+                                <button type="button" class="remove-image" id="removeImage" style="display: none;">✕</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="submit-btn">
+                        <span class="btn-icon">✨</span>
+                        <span>提交猫咪</span>
+                    </button>
+                    <button type="reset" class="reset-btn">重置表单</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <!-- Modal 弹窗 -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal-content" id="modalContent">
+            <button class="modal-close" id="modalClose">✕</button>
+            <div class="modal-body">
+                <!-- 内容由 JavaScript 填充 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 彩蛋动画容器 -->
+    <div class="easter-egg-particles" id="easterEggParticles"></div>
+
+    <!-- 彩蛋提示 -->
+    <div class="easter-egg-toast" id="easterEggToast">
+        <span class="toast-icon">🎉</span>
+        <span class="toast-text">喵～被你发现了！</span>
+    </div>
+
+    <!-- 上传成功提示 -->
+    <div class="upload-success-toast" id="uploadSuccessToast">
+        <span class="toast-icon">🎊</span>
+        <span class="toast-text">猫咪已加入图鉴！</span>
+    </div>
+
+    <!-- 随机事件提示 -->
+    <div class="random-event-toast" id="randomEventToast">
+        <span class="event-icon" id="eventIcon">🎲</span>
+        <span class="event-text" id="eventText"></span>
+    </div>
+
+    <!-- 游戏互动提示 -->
+    <div class="game-toast" id="gameToast">
+        <span class="game-toast-icon">🐾</span>
+        <span class="game-toast-text" id="gameToastText"></span>
+    </div>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <p>🐾 用爱心制作 · 每一只猫都值得被宠爱 🐾</p>
+        <div class="footer-stats" id="footerStats"></div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
