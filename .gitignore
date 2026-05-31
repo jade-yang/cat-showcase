@@ -1,3 +1,12 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Server data (contains user passwords / tokens)
+server/data/*.json
+!server/data/cats.json
+
 # localStorage data
 *.local
 
@@ -19,3 +28,9 @@ yarn-error.log*
 
 # Dependencies
 node_modules/
+package-lock.json
+
+# Tool directories
+.codegraph/
+.cursor/
+.workbuddy/

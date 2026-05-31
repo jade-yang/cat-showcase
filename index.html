@@ -30,6 +30,11 @@
                 <a href="#dashboard-section" class="nav-link" data-section="dashboard">数据面板</a>
                 <a href="#ranking-section" class="nav-link" data-section="ranking">排行榜</a>
                 <a href="#upload-section" class="nav-link" data-section="upload">上传新猫咪</a>
+                <a href="#admin-section" class="nav-link admin-only" data-section="admin" data-display="inline-flex">猫咪管理</a>
+            </div>
+            <div class="nav-auth-section" id="navAuthSection">
+                <button class="nav-login-btn" id="navLoginBtn">登录</button>
+                <button class="nav-register-btn" id="navRegisterBtn">注册</button>
             </div>
             <!-- 夜间模式切换按钮 -->
             <button class="theme-toggle" id="themeToggle" aria-label="切换夜间模式" title="切换夜间模式">
@@ -118,6 +123,8 @@
                     <option value="age">按年龄 小→大</option>
                     <option value="age-desc">按年龄 大→小</option>
                     <option value="likes">按点赞数</option>
+                    <option value="createdAt-desc">按创建时间</option>
+                    <option value="exp-desc">按 EXP</option>
                     <option value="score">按热度</option>
                 </select>
             </div>
@@ -354,12 +361,132 @@
         </div>
     </section>
 
+    <!-- 我的上传区域 -->
+    <section class="my-uploads-section" id="my-uploads-section">
+        <div class="my-uploads-container">
+            <div class="my-uploads-header">
+                <div class="my-uploads-icon">📷</div>
+                <h2 class="my-uploads-title">我的上传</h2>
+                <p class="my-uploads-subtitle">管理你上传的猫咪小伙伴</p>
+            </div>
+            <div class="my-uploads-grid" id="myUploadsGrid">
+                <div class="my-uploads-empty" id="myUploadsEmpty">
+                    <p>😺 你还没有上传猫咪哦～</p>
+                    <p class="my-uploads-hint">上传一只猫咪，让大家认识你的小伙伴吧！</p>
+                </div>
+            </div>
+            <div class="my-uploads-login-hint" id="myUploadsLoginHint">
+                <p>🔒 请先登录查看你的上传</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- 猫咪管理后台区域 -->
+    <section class="admin-section admin-only" id="admin-section" data-display="block">
+        <div class="admin-container">
+            <div class="admin-header">
+                <div>
+                    <div class="admin-icon">🗂️</div>
+                    <h2 class="admin-title">猫咪数据管理</h2>
+                    <p class="admin-subtitle">通过后端 API 管理图鉴里的猫咪数据</p>
+                </div>
+                <button type="button" class="legacy-import-btn" id="legacyImportBtn">导入本地猫咪数据</button>
+            </div>
+            <div class="admin-toolbar">
+                <div class="admin-search">
+                    <input type="text" id="adminSearchInput" placeholder="搜索名字或品种">
+                </div>
+                <select id="adminSortSelect" class="admin-sort">
+                    <option value="createdAt-desc">创建时间 新→旧</option>
+                    <option value="createdAt-asc">创建时间 旧→新</option>
+                    <option value="exp-desc">EXP 高→低</option>
+                    <option value="likes-desc">点赞 高→低</option>
+                    <option value="name-asc">名字 A→Z</option>
+                </select>
+            </div>
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>图片</th>
+                            <th>名字</th>
+                            <th>品种</th>
+                            <th>年龄</th>
+                            <th>性格</th>
+                            <th>EXP</th>
+                            <th>等级</th>
+                            <th>创建时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminCatsTable">
+                        <tr>
+                            <td colspan="9" class="admin-empty">正在加载猫咪数据...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
     <!-- Modal 弹窗 -->
     <div class="modal-overlay" id="modalOverlay">
         <div class="modal-content" id="modalContent">
             <button class="modal-close" id="modalClose">✕</button>
             <div class="modal-body">
                 <!-- 内容由 JavaScript 填充 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑猫咪弹窗 -->
+    <div class="modal-overlay edit-modal-overlay" id="editModalOverlay">
+        <div class="modal-content edit-modal-content">
+            <button class="modal-close" id="editModalClose">✕</button>
+            <div class="modal-body">
+                <h2 class="modal-name">编辑猫咪</h2>
+                <form class="edit-cat-form" id="editCatForm">
+                    <input type="hidden" id="editCatId">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="editCatName">猫咪名字 <span class="required">*</span></label>
+                            <input type="text" id="editCatName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="editCatBreed">品种 <span class="required">*</span></label>
+                            <input type="text" id="editCatBreed" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="editCatAge">年龄（岁）<span class="required">*</span></label>
+                            <input type="number" id="editCatAge" min="0" max="30" step="0.1" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="editCatFavorite">喜欢的玩具/食物</label>
+                            <input type="text" id="editCatFavorite">
+                        </div>
+                    </div>
+                    <div class="form-group full-width">
+                        <label for="editCatTraits">性格标签 <span class="required">*</span></label>
+                        <input type="text" id="editCatTraits" placeholder="用逗号分隔，例如：粘人, 活泼" required>
+                    </div>
+                    <div class="form-group full-width">
+                        <label for="editCatDesc">简短介绍</label>
+                        <textarea id="editCatDesc" rows="3"></textarea>
+                    </div>
+                    <div class="form-group full-width">
+                        <label for="editCatImg">图片 URL 或上传路径</label>
+                        <input type="text" id="editCatImg" placeholder="https://example.com/cat.jpg 或 /uploads/cat.jpg">
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="submit-btn">
+                            <span class="btn-icon">💾</span>
+                            <span>保存修改</span>
+                        </button>
+                        <button type="button" class="reset-btn" id="editCancelBtn">取消</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -417,8 +544,11 @@
         </div>
     </div>
 
+    <script src="api.js"></script>
+    <script src="auth.js"></script>
     <script src="growth.js"></script>
     <script src="poster.js"></script>
+    <script src="comments.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

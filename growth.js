@@ -20,8 +20,8 @@ const GROWTH_LEVELS = [
  * exp = likes*5 + favorites*10 + shares*15 + views*1 + gameInteractions*8
  */
 function calculateGrowth(cat) {
-    const likes = (window.userLikes && window.userLikes[cat.id]) ? window.userLikes[cat.id] : 0;
-    const favorites = (window.userFavorites && window.userFavorites.includes(cat.id)) ? 1 : 0;
+    const likes = cat.likes || 0;
+    const favorites = cat.favorites || 0;
     const shares = cat.shares || 0;
     const views = cat.views || 0;
     const gameInteractions = cat.gameInteractions || 0;
@@ -210,6 +210,26 @@ function loadGrowthData() {
  */
 function initGrowthData() {
     if (!window.catsData) return;
+
+    if (window.backendDataLoaded) {
+        window.catsData = window.catsData.map(function (cat) {
+            if (typeof cat.exp === 'number' && cat.level) {
+                var levelInfo = getGrowthLevel(cat.exp);
+                cat.growthLevel = cat.level || levelInfo.level;
+                cat.growthTitle = cat.title || levelInfo.title;
+                cat.growthEmoji = cat.growthEmoji || levelInfo.emoji;
+                cat.growthProgress = typeof cat.growthProgress === 'number'
+                    ? cat.growthProgress
+                    : getGrowthProgress(cat.exp, levelInfo);
+            } else {
+                updateCatGrowth(cat);
+            }
+            return cat;
+        });
+        saveGrowthData();
+        return;
+    }
+
     var savedGrowth = loadGrowthData();
 
     window.catsData = window.catsData.map(function (cat) {

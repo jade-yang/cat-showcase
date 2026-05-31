@@ -172,6 +172,11 @@ let userLikes = {};         // 点赞数据 { catId: count }
 let userFavorites = [];      // 收藏列表 [catId, ...]
 let clickCounts = {};        // 彩蛋计数
 let isDarkMode = false;      // 夜间模式状态
+let backendDataLoaded = false;
+let viewObserver = null;
+let viewedCatsSession = new Set();
+let adminSearch = '';
+let adminSort = 'createdAt-desc';
 
 // ===== Chart.js 实例 =====
 let likesChartInstance = null;
@@ -180,62 +185,239 @@ let kpiPieChartInstance = null;
 let trendChartInstance = null;
 let levelDistChartInstance = null;
 
-// ===== 夜间模式功能 =====
-/**
- * 初始化夜间模式
- */
-function initTheme() {
-    // 从 localStorage 读取保存的主题状态
-    const savedTheme = localStorage.getItem('darkMode');
-    if (savedTheme === 'true') {
-        enableDarkMode();
-    }
-
-    // 设置主题切换按钮事件
-    const themeToggle = document.getElementById('themeToggle');
-    themeToggle.addEventListener('click', toggleTheme);
+function syncGlobalState() {
+    window.catsData = catsData;
+    window.userFavorites = userFavorites;
+    window.backendDataLoaded = backendDataLoaded;
 }
 
-/**
- * 切换主题
- */
-function toggleTheme() {
-    if (isDarkMode) {
-        disableDarkMode();
+function getGrowthEmoji(level) {
+    const emojis = ['🌱', '🐾', '⭐', '🌟', '👑', '🚀'];
+    return emojis[Math.max(0, Math.min(5, (level || 1) - 1))];
+}
+
+function normalizeClientCat(cat) {
+    var expVal = Number(cat.exp || 0);
+    var lvl = Number(cat.level || cat.growthLevel || 1);
+    var titleVal = cat.title || cat.growthTitle || '新手萌猫';
+
+    // 如果后端返回了 EXP 但没有 growthProgress，通过 growth.js 计算
+    var progressVal = Number(cat.growthProgress || 0);
+    if (expVal > 0 && progressVal === 0 && typeof getGrowthLevel === 'function' && typeof getGrowthProgress === 'function') {
+        var lvlInfo = getGrowthLevel(expVal);
+        progressVal = getGrowthProgress(expVal, lvlInfo);
+    }
+
+    var normalized = {
+        id: cat.id,
+        name: cat.name,
+        breed: cat.breed || '',
+        age: Number(cat.age || 0),
+        traits: Array.isArray(cat.traits) ? cat.traits : [],
+        favorite: cat.favorite || '神秘玩具',
+        desc: cat.desc || '',
+        img: cat.img || '',
+        imgAlt: cat.imgAlt || cat.img || '',
+        likes: Number(cat.likes || 0),
+        favorites: Number(cat.favorites || 0),
+        shares: Number(cat.shares || 0),
+        views: Number(cat.views || 0),
+        gameInteractions: Number(cat.gameInteractions || 0),
+        exp: expVal,
+        level: lvl,
+        title: titleVal,
+        growthLevel: lvl,
+        growthTitle: titleVal,
+        growthEmoji: cat.growthEmoji || getGrowthEmoji(lvl),
+        growthProgress: progressVal,
+        uploadedByUser: !!cat.uploadedByUser,
+        uploaderId: cat.uploaderId || null,
+        createdAt: cat.createdAt || null,
+        updatedAt: cat.updatedAt || null
+    };
+    return normalized;
+}
+
+function replaceCatInState(updatedCat) {
+    const normalized = normalizeClientCat(updatedCat);
+    const index = catsData.findIndex(cat => cat.id === normalized.id);
+    if (index > -1) {
+        catsData[index] = normalized;
     } else {
-        enableDarkMode();
+        catsData.push(normalized);
     }
-    // 主题切换后重新渲染图表以适配颜色
+    syncGlobalState();
+    return normalized;
+}
+
+function renderAllDynamicSections() {
+    renderCats();
     renderDashboard();
+    renderRanking();
+    renderAdminTable();
+    renderMyUploads();
+    updateFooterStats();
 }
 
-/**
- * 启用夜间模式
- */
-function enableDarkMode() {
-    document.body.classList.add('dark-mode');
-    isDarkMode = true;
-    localStorage.setItem('darkMode', 'true');
-    updateThemeIcon();
-}
+// ===== 夜间模式功能 =====
 
-/**
- * 禁用夜间模式
- */
-function disableDarkMode() {
-    document.body.classList.remove('dark-mode');
-    isDarkMode = false;
-    localStorage.setItem('darkMode', 'false');
-    updateThemeIcon();
-}
+var enableDarkMode, disableDarkMode, applyTheme, _themeToggleDebounce;
 
-/**
- * 更新主题图标
- */
-function updateThemeIcon() {
-    const themeIcon = document.getElementById('themeIcon');
-    themeIcon.textContent = isDarkMode ? '☀️' : '🌙';
-}
+(function () {
+    var THEME_STORAGE_KEY = 'darkMode';
+    var DEBOUNCE_MS = 300;
+
+    /**
+     * 内部核心：应用主题状态到页面
+     * @param {boolean} dark - 是否启用暗色模式
+     * @param {boolean} save - 是否写入 localStorage（默认 true）
+     */
+    function _applyThemeState(dark, save) {
+        isDarkMode = dark;
+
+        if (dark) {
+            document.body.classList.add('dark-mode');
+            document.documentElement.classList.add('dark-mode');
+        } else {
+            document.body.classList.remove('dark-mode');
+            document.documentElement.classList.remove('dark-mode');
+        }
+
+        _updateThemeIcon();
+
+        if (save !== false) {
+            localStorage.setItem(THEME_STORAGE_KEY, dark ? 'true' : 'false');
+        }
+
+        // 重绘图表（Canvas 无法自动响应 CSS 变量，需重建）
+        _refreshThemeSensitiveUI();
+    }
+
+    /**
+     * 刷新对主题敏感的 UI 组件（Dashboard 图表 / 排行榜 / 管理表格）
+     */
+    function _refreshThemeSensitiveUI() {
+        if (typeof renderDashboard === 'function') {
+            renderDashboard();
+        }
+        // 排行榜和管理表格使用 CSS 变量，DOM 已自动响应；
+        // 此处仅做额外保险：若任一包含绝对定位/JS 生成元素则强制刷新
+        if (typeof renderRanking === 'function') {
+            renderRanking();
+        }
+        if (typeof renderAdminTable === 'function') {
+            renderAdminTable();
+        }
+    }
+
+    /**
+     * 更新按钮图标
+     */
+    function _updateThemeIcon() {
+        var themeIcon = document.getElementById('themeIcon');
+        if (themeIcon) {
+            themeIcon.textContent = isDarkMode ? '\u2600\uFE0F' : '\uD83C\uDF19';
+        }
+    }
+
+    /**
+     * 切换主题（带防抖保护，防止快速点击导致图表反复销毁重建）
+     */
+    function _toggleTheme() {
+        if (_themeToggleDebounce) return;
+        _themeToggleDebounce = true;
+
+        _applyThemeState(!isDarkMode, true);
+
+        setTimeout(function () {
+            _themeToggleDebounce = false;
+        }, DEBOUNCE_MS);
+    }
+
+    /**
+     * 绑定按钮事件（click + touchend，移动端兼容）
+     */
+    function _bindToggleButton() {
+        var themeToggle = document.getElementById('themeToggle');
+        if (!themeToggle) return;
+
+        // 防止同一按钮多次绑定
+        if (themeToggle.dataset.themeBound === 'true') return;
+        themeToggle.dataset.themeBound = 'true';
+
+        // click —— 桌面端主事件
+        themeToggle.addEventListener('click', function (e) {
+            e.preventDefault();
+            _toggleTheme();
+        });
+
+        // touchend —— 移动端兼容，阻止触发两次
+        themeToggle.addEventListener('touchend', function (e) {
+            e.preventDefault();
+            // 仅在 touch 设备上通过 touchend 触发（避免同时触发 click）
+            if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+                _toggleTheme();
+            }
+        });
+
+        // 全局键盘快捷键：Ctrl/Cmd + Shift + D 切换主题
+        document.addEventListener('keydown', function (e) {
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'D') {
+                e.preventDefault();
+                _toggleTheme();
+            }
+        });
+    }
+
+    /**
+     * 初始化夜间模式（页面加载时调用）
+     */
+    function initTheme() {
+        // 1. 从 localStorage 读取持久化状态
+        var savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+        var shouldBeDark = savedTheme === 'true';
+
+        // 2. 也检测系统偏好（首次访问无 localStorage 记录时）
+        if (savedTheme === null && window.matchMedia) {
+            shouldBeDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        }
+
+        // 3. 防御性清理：先移除所有可能残留的 dark-mode 类
+        document.body.classList.remove('dark-mode');
+        document.documentElement.classList.remove('dark-mode');
+
+        // 4. 应用正确状态（不写 localStorage，因为我们已经读取了）
+        _applyThemeState(shouldBeDark, false);
+
+        // 5. 如果是从系统偏好推导的，写入 localStorage
+        if (savedTheme === null) {
+            localStorage.setItem(THEME_STORAGE_KEY, shouldBeDark ? 'true' : 'false');
+        }
+
+        // 6. 绑定切换按钮
+        _bindToggleButton();
+
+        // 7. 监听系统主题变化（当用户未手动设置时自动跟随）
+        if (window.matchMedia) {
+            var colorSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+            colorSchemeQuery.addEventListener('change', function (e) {
+                // 仅在用户未手动覆盖时跟随系统
+                var manualOverride = localStorage.getItem(THEME_STORAGE_KEY);
+                if (manualOverride === null) {
+                    _applyThemeState(e.matches, false);
+                }
+            });
+        }
+    }
+
+    // 暴露给外部调用（供其他模块切换）
+    enableDarkMode = function () { _applyThemeState(true, true); };
+    disableDarkMode = function () { _applyThemeState(false, true); };
+    applyTheme = _applyThemeState;
+
+    // 注册初始化入口
+    window.initTheme = initTheme;
+})();
 
 // ===== 图表主题配置 =====
 /**
@@ -251,38 +433,52 @@ function getChartThemeColors() {
     };
 }
 
-// ===== KPI 计算 =====
+// ===== KPI 计算 (统一委托到 growth.js 成长系统) =====
 /**
- * 计算猫咪热度分数
- * score = likes*2 + favorites*3 + shares*4 + views*0.5 + gameInteractions*1.5
+ * 计算猫咪 EXP（统一入口，委托给 growth.js）
+ * exp = likes*5 + favorites*10 + shares*15 + views*1 + gameInteractions*8
  */
 function calculateCatScore(cat) {
-    const likesScore = getLikesCount(cat) * 2;
-    const favoritesScore = (isFavorited(cat.id) ? 1 : 0) * 3;
-    const sharesScore = (cat.shares || 0) * 4;
-    const viewsScore = (cat.views || 0) * 0.5;
-    const gameScore = (cat.gameInteractions || 0) * 1.5;
+    if (typeof calculateGrowth === 'function') {
+        return calculateGrowth(cat);
+    }
+    // fallback 计算
+    var likesScore = getLikesCount(cat) * 5;
+    var favoritesScore = (cat.favorites || 0) * 10;
+    var sharesScore = (cat.shares || 0) * 15;
+    var viewsScore = (cat.views || 0) * 1;
+    var gameScore = (cat.gameInteractions || 0) * 8;
     return Math.round(likesScore + favoritesScore + sharesScore + viewsScore + gameScore);
 }
 
 /**
- * 获取猫咪等级
+ * 获取猫咪等级（统一入口，委托给 growth.js）
  */
-function getCatLevel(score) {
-    if (score >= 200) return { level: 5, name: '宇宙猫王', emoji: '👑', minScore: 200, maxScore: Infinity };
-    if (score >= 100) return { level: 4, name: '传奇猫皇', emoji: '🌟', minScore: 100, maxScore: 199 };
-    if (score >= 50) return { level: 3, name: '人气明星', emoji: '🎖️', minScore: 50, maxScore: 99 };
-    if (score >= 20) return { level: 2, name: '网红猫咪', emoji: '🔥', minScore: 20, maxScore: 49 };
-    return { level: 1, name: '休息区萌猫', emoji: '🌱', minScore: 0, maxScore: 19 };
+function getCatLevel(exp) {
+    if (typeof getGrowthLevel === 'function') {
+        return getGrowthLevel(exp);
+    }
+    // fallback
+    if (exp >= 1000) return { level: 6, title: '宇宙喵神', emoji: '🚀', minExp: 1000, maxExp: Infinity };
+    if (exp >= 600)  return { level: 5, title: '传说猫王', emoji: '👑', minExp: 600, maxExp: 999 };
+    if (exp >= 300)  return { level: 4, title: '明星喵喵', emoji: '🌟', minExp: 300, maxExp: 599 };
+    if (exp >= 150)  return { level: 3, title: '人气猫咪', emoji: '⭐', minExp: 150, maxExp: 299 };
+    if (exp >= 50)   return { level: 2, title: '活跃小猫', emoji: '🐾', minExp: 50, maxExp: 149 };
+    return { level: 1, title: '新手萌猫', emoji: '🌱', minExp: 0, maxExp: 49 };
 }
 
 /**
- * 获取等级进度百分比
+ * 获取等级进度百分比（统一入口，委托给 growth.js）
  */
-function getLevelProgress(score) {
-    const level = getCatLevel(score);
-    const range = level.maxScore - level.minScore;
-    const progress = score - level.minScore;
+function getLevelProgress(exp) {
+    if (typeof getGrowthProgress === 'function' && typeof getGrowthLevel === 'function') {
+        var lvl = getGrowthLevel(exp);
+        return getGrowthProgress(exp, lvl);
+    }
+    // fallback
+    var level = getCatLevel(exp);
+    var range = level.maxExp - level.minExp;
+    var progress = exp - level.minExp;
     return Math.min(Math.max((progress / range) * 100, 0), 100);
 }
 
@@ -315,47 +511,63 @@ function saveKPI() {
 }
 
 /**
- * 渲染成长进度条
+ * 渲染成长进度条（回退版本，优先使用 growth.js 的 renderGrowthUI）
  */
 function renderGrowthProgress(cat) {
-    const score = calculateCatScore(cat);
-    const level = getCatLevel(score);
-    const progress = getLevelProgress(score);
+    var exp = cat.exp || 0;
+    var level = getCatLevel(exp);
+    var progress = getLevelProgress(exp);
+    var nextExp = level.level < 6 ? level.maxExp - exp + 1 : 0;
 
-    return `
-        <div class="growth-section">
-            <div class="growth-header">
-                <span class="growth-label">
-                    <span>📊</span> 热度
-                </span>
-                <span class="growth-level-badge">
-                    ${level.emoji} ${level.name}
-                </span>
-            </div>
-            <div class="progress-bar">
-                <div class="progress-fill" style="width: ${progress}%"></div>
-            </div>
-            <div class="growth-stats">
-                <span>❤️ ${getLikesCount(cat)} · 👀 ${cat.views || 0} · 🎮 ${cat.gameInteractions || 0}</span>
-                <span>${score} 热度值</span>
-            </div>
-        </div>
-    `;
+    return '' +
+        '<div class="growth-section">' +
+            '<div class="growth-header">' +
+                '<span class="growth-label">' +
+                    '<span>' + level.emoji + '</span> Lv.' + level.level +
+                '</span>' +
+                '<span class="growth-title-badge">' + level.title + '</span>' +
+            '</div>' +
+            '<div class="progress-bar">' +
+                '<div class="progress-fill growth-fill" style="width: ' + progress + '%"></div>' +
+            '</div>' +
+            '<div class="growth-stats">' +
+                '<span>' + exp + ' EXP</span>' +
+                (level.level < 6
+                    ? '<span>距下一级还需 ' + nextExp + ' EXP</span>'
+                    : '<span>已满级 ' + level.emoji + '</span>') +
+            '</div>' +
+        '</div>';
 }
 
 /**
  * 初始化视图追踪 (IntersectionObserver)
  */
 function initViewTracking() {
-    const observer = new IntersectionObserver((entries) => {
+    if (viewObserver) {
+        viewObserver.disconnect();
+    }
+
+    viewObserver = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
             if (entry.isIntersecting) {
                 const card = entry.target;
                 const catId = card.dataset.catId;
+                if (viewedCatsSession.has(catId)) {
+                    viewObserver.unobserve(card);
+                    return;
+                }
+                viewedCatsSession.add(catId);
+                viewObserver.unobserve(card);
                 const cat = catsData.find(c => c.id === catId);
                 if (cat) {
-                    cat.views = (cat.views || 0) + 1;
-                    saveKPI();
+                    updateCatStats(cat.id, { views: 1 }, { silent: true }).then(updated => {
+                        if (updated) {
+                            renderDashboard();
+                            renderRanking();
+                            renderAdminTable();
+                            updateFooterStats();
+                        }
+                    });
                 }
             }
         });
@@ -364,55 +576,66 @@ function initViewTracking() {
     // 观察所有猫咪卡片
     setTimeout(() => {
         document.querySelectorAll('.cat-card').forEach(card => {
-            observer.observe(card);
+            viewObserver.observe(card);
         });
-    }, 500);
+    }, 100);
 }
 
 // ===== 初始化数据 =====
-function initData() {
-    // 加载默认数据
-    catsData = [...defaultCatsData];
+async function initData() {
+    backendDataLoaded = false;
 
-    // 加载用户数据
-    const savedCats = localStorage.getItem('userUploadedCats');
-    if (savedCats) {
-        const userCats = JSON.parse(savedCats);
-        catsData = [...catsData, ...userCats];
-    }
-
-    // 加载点赞数据
+    // 加载旧版本地偏好。点赞核心计数改由后端保存，旧 userLikes 只保留兼容读取。
     const savedLikes = localStorage.getItem('userLikes');
     if (savedLikes) {
-        userLikes = JSON.parse(savedLikes);
+        try { userLikes = JSON.parse(savedLikes); } catch (e) { userLikes = {}; }
     }
 
-    // 加载收藏数据
     const savedFavorites = localStorage.getItem('userFavorites');
     if (savedFavorites) {
-        userFavorites = JSON.parse(savedFavorites);
+        try { userFavorites = JSON.parse(savedFavorites); } catch (e) { userFavorites = []; }
     }
 
-    // 加载猫咪KPI数据
-    const savedKPI = localStorage.getItem('catsKPI');
-    if (savedKPI) {
-        const kpiData = JSON.parse(savedKPI);
-        catsData = catsData.map(cat => ({
-            ...cat,
-            shares: kpiData[cat.id]?.shares || 0,
-            views: kpiData[cat.id]?.views || 0,
-            gameInteractions: kpiData[cat.id]?.gameInteractions || 0
-        }));
-    }
-
-    // 加载彩蛋点击计数
     const savedClicks = localStorage.getItem('easterEggClicks');
     if (savedClicks) {
         try { clickCounts = JSON.parse(savedClicks); } catch (e) { clickCounts = {}; }
     }
 
-    // 初始化视图追踪
-    initViewTracking();
+    try {
+        if (!window.CatApi) {
+            throw new Error('API 模块未加载');
+        }
+        const apiCats = await window.CatApi.getCats();
+        catsData = apiCats.map(normalizeClientCat);
+        backendDataLoaded = true;
+    } catch (error) {
+        console.error('加载后端猫咪数据失败，已使用本地兜底数据：', error);
+        showToast('后端数据加载失败，暂时显示本地数据', 'error');
+        catsData = defaultCatsData.map(normalizeClientCat);
+
+        const savedCats = localStorage.getItem('userUploadedCats');
+        if (savedCats) {
+            try {
+                const userCats = JSON.parse(savedCats);
+                catsData = [...catsData, ...userCats.map(normalizeClientCat)];
+            } catch (e) {}
+        }
+
+        const savedKPI = localStorage.getItem('catsKPI');
+        if (savedKPI) {
+            try {
+                const kpiData = JSON.parse(savedKPI);
+                catsData = catsData.map(cat => normalizeClientCat({
+                    ...cat,
+                    shares: kpiData[cat.id]?.shares || 0,
+                    views: kpiData[cat.id]?.views || 0,
+                    gameInteractions: kpiData[cat.id]?.gameInteractions || 0
+                }));
+            } catch (e) {}
+        }
+    }
+
+    syncGlobalState();
 }
 
 // ===== 工具函数 =====
@@ -456,11 +679,23 @@ function getCardId(catId) {
     return 'cat-card-' + catId;
 }
 
+function escapeHTML(value) {
+    return String(value ?? '').replace(/[&<>"']/g, function (char) {
+        return {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        }[char];
+    });
+}
+
 /**
  * 获取猫咪点赞数
  */
 function getLikesCount(cat) {
-    return (userLikes[cat.id] || 0) + (cat.likes || 0);
+    return cat.likes || 0;
 }
 
 /**
@@ -470,6 +705,47 @@ function isFavorited(catId) {
     return userFavorites.includes(catId);
 }
 
+async function updateCatStats(catId, stats, options = {}) {
+    const cat = catsData.find(c => c.id === catId);
+    if (!cat) return null;
+    const oldLevel = cat.growthLevel || cat.level || 1;
+
+    if (!backendDataLoaded || !window.CatApi) {
+        Object.entries(stats).forEach(([field, value]) => {
+            cat[field] = Math.max(0, Number(cat[field] || 0) + Number(value || 0));
+        });
+        if (typeof updateCatGrowth === 'function') {
+            updateCatGrowth(cat);
+        }
+        saveKPI();
+        syncGlobalState();
+        return cat;
+    }
+
+    try {
+        const updated = await window.CatApi.updateStats(catId, stats);
+        const normalized = replaceCatInState(updated);
+        // 确保成长进度是最新计算的
+        if (typeof updateCatGrowth === 'function') {
+            updateCatGrowth(normalized);
+            normalized.growthProgress = normalized.growthProgress || getLevelProgress(normalized.exp || 0);
+        }
+        if (typeof saveGrowthData === 'function') {
+            saveGrowthData();
+        }
+        if (!options.silent && (normalized.growthLevel || normalized.level || 1) > oldLevel && typeof triggerLevelUpAnimation === 'function') {
+            triggerLevelUpAnimation(normalized, oldLevel, normalized.growthLevel || normalized.level);
+        }
+        return normalized;
+    } catch (error) {
+        console.error('更新互动数据失败：', error);
+        if (!options.silent) {
+            showToast(error.message || '互动数据更新失败', 'error');
+        }
+        return null;
+    }
+}
+
 /**
  * 渲染 KPI 数据面板
  */
@@ -477,13 +753,14 @@ function renderDashboard() {
     // 计算总览数据
     const totalCats = catsData.length;
     let totalLikes = 0;
-    let totalFavorites = userFavorites.length;
+    let totalFavorites = 0;
     let totalShares = 0;
     let totalViews = 0;
     let totalGameInteractions = 0;
 
     catsData.forEach(cat => {
         totalLikes += getLikesCount(cat);
+        totalFavorites += cat.favorites || 0;
         totalShares += cat.shares || 0;
         totalViews += cat.views || 0;
         totalGameInteractions += cat.gameInteractions || 0;
@@ -497,9 +774,13 @@ function renderDashboard() {
     document.getElementById('totalViews').textContent = totalViews;
     document.getElementById('totalGameInteractions').textContent = totalGameInteractions;
 
+    if (typeof Chart === 'undefined') {
+        return;
+    }
+
     // 获取 TOP 10 数据
     const sortedByLikes = [...catsData].sort((a, b) => getLikesCount(b) - getLikesCount(a)).slice(0, 10);
-    const sortedByFavorites = [...catsData].sort((a, b) => (isFavorited(b.id) ? 1 : 0) - (isFavorited(a.id) ? 1 : 0)).slice(0, 10);
+    const sortedByFavorites = [...catsData].sort((a, b) => (b.favorites || 0) - (a.favorites || 0)).slice(0, 10);
     const sortedByScore = [...catsData].sort((a, b) => calculateCatScore(b) - calculateCatScore(a)).slice(0, 10);
 
     // 销毁旧图表
@@ -555,12 +836,12 @@ function renderDashboard() {
             labels: sortedByFavorites.map(c => c.name),
             datasets: [{
                 label: '收藏状态',
-                data: sortedByFavorites.map(c => isFavorited(c.id) ? 1 : 0),
+                data: sortedByFavorites.map(c => c.favorites || 0),
                 backgroundColor: sortedByFavorites.map(c =>
-                    isFavorited(c.id) ? 'rgba(255, 107, 138, 0.7)' : 'rgba(200, 200, 200, 0.5)'
+                    (c.favorites || 0) > 0 ? 'rgba(255, 107, 138, 0.7)' : 'rgba(200, 200, 200, 0.5)'
                 ),
                 borderColor: sortedByFavorites.map(c =>
-                    isFavorited(c.id) ? 'rgba(255, 107, 138, 1)' : 'rgba(200, 200, 200, 1)'
+                    (c.favorites || 0) > 0 ? 'rgba(255, 107, 138, 1)' : 'rgba(200, 200, 200, 1)'
                 ),
                 borderWidth: 1,
                 borderRadius: 5
@@ -578,7 +859,7 @@ function renderDashboard() {
                     grid: { color: themeColors.gridColor }
                 },
                 y: {
-                    beginAtZero: true, max: 1,
+                    beginAtZero: true,
                     ticks: { color: themeColors.tickColor },
                     grid: { color: themeColors.gridColor }
                 }
@@ -617,16 +898,16 @@ function renderDashboard() {
         }
     });
 
-    // 热度趋势折线图
-    const trendCtx = document.getElementById('trendChart').getContext('2d');
-    const trendLabels = sortedByScore.map(c => c.name);
-    const trendData = sortedByScore.map(c => calculateCatScore(c));
+    // 热度趋势折线图 (EXP)
+    var trendCtx = document.getElementById('trendChart').getContext('2d');
+    var trendLabels = sortedByScore.map(function(c) { return c.name; });
+    var trendData = sortedByScore.map(function(c) { return calculateCatScore(c); });
     trendChartInstance = new Chart(trendCtx, {
         type: 'line',
         data: {
             labels: trendLabels,
             datasets: [{
-                label: '热度值',
+                label: 'EXP',
                 data: trendData,
                 borderColor: 'rgba(255, 155, 155, 1)',
                 backgroundColor: 'rgba(255, 155, 155, 0.2)',
@@ -734,38 +1015,46 @@ function renderDashboard() {
  * 渲染排行榜
  */
 function renderRanking() {
-    const rankingList = document.getElementById('rankingList');
-    const sortedCats = [...catsData].sort((a, b) => calculateCatScore(b) - calculateCatScore(a));
+    var rankingList = document.getElementById('rankingList');
+    // 确保每只猫的成长数据是最新的
+    catsData.forEach(function(cat) {
+        if (typeof updateCatGrowth === 'function') {
+            updateCatGrowth(cat);
+        }
+    });
+    var sortedCats = catsData.slice().sort(function(a, b) {
+        return (b.exp || 0) - (a.exp || 0);
+    });
 
-    rankingList.innerHTML = sortedCats.map((cat, index) => {
-        const score = calculateCatScore(cat);
-        const level = getCatLevel(score);
-        const topClass = index === 0 ? 'top-1' : index === 1 ? 'top-2' : index === 2 ? 'top-3' : '';
-        const crown = index === 0 ? '<span class="ranking-crown">👑</span>' : '';
-        const position = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`;
+    rankingList.innerHTML = sortedCats.map(function(cat, index) {
+        var exp = cat.exp || 0;
+        var level = getCatLevel(exp);
+        var progress = getLevelProgress(exp);
+        var topClass = index === 0 ? 'top-1' : index === 1 ? 'top-2' : index === 2 ? 'top-3' : '';
+        var crown = index === 0 ? '<span class="ranking-crown">👑</span>' : '';
+        var position = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '#' + (index + 1);
 
-        return `
-            <div class="ranking-item ${topClass}" data-cat-id="${cat.id}">
-                <div class="ranking-position">${position}${crown}</div>
-                <img class="ranking-image" src="${cat.img}" alt="${cat.name}"
-                     onerror="this.src='https://placehold.co/60x60/FFE8E8/FF9B9B?text=${encodeURIComponent(cat.name)}'">
-                <div class="ranking-info">
-                    <div class="ranking-name">${cat.name} ${level.emoji}</div>
-                    <div class="ranking-breed">${cat.breed}</div>
-                </div>
-                <div class="ranking-score">
-                    <div class="ranking-score-value">${score}</div>
-                    <div class="ranking-score-label">热度值</div>
-                </div>
-            </div>
-        `;
+        return '' +
+            '<div class="ranking-item ' + topClass + '" data-cat-id="' + cat.id + '">' +
+                '<div class="ranking-position">' + position + crown + '</div>' +
+                '<img class="ranking-image" src="' + cat.img + '" alt="' + cat.name + '"' +
+                '     onerror="this.src=\'https://placehold.co/60x60/FFE8E8/FF9B9B?text=' + encodeURIComponent(cat.name) + '\'">' +
+                '<div class="ranking-info">' +
+                    '<div class="ranking-name">' + cat.name + '</div>' +
+                    '<div class="ranking-breed">' + cat.breed + ' · ' + level.emoji + ' ' + level.title + '</div>' +
+                '</div>' +
+                '<div class="ranking-score">' +
+                    '<div class="ranking-score-value">' + exp + '</div>' +
+                    '<div class="ranking-score-label">EXP</div>' +
+                '</div>' +
+            '</div>';
     }).join('');
 
     // 排行榜点击事件
-    rankingList.querySelectorAll('.ranking-item').forEach(item => {
-        item.addEventListener('click', () => {
-            const catId = item.dataset.catId;
-            const cat = catsData.find(c => c.id === catId);
+    rankingList.querySelectorAll('.ranking-item').forEach(function(item) {
+        item.addEventListener('click', function() {
+            var catId = item.dataset.catId;
+            var cat = catsData.find(function(c) { return c.id === catId; });
             if (cat) openModal(cat);
         });
     });
@@ -775,48 +1064,44 @@ function renderRanking() {
  * 随机事件系统
  */
 function startRandomEvents() {
-    const events = [
-        { icon: '🎲', text: '奶茶今天心情很好，被点赞了！' },
-        { icon: '🌟', text: '橘子意外走红了！' },
-        { icon: '🎉', text: '小白的照片被疯狂浏览！' },
-        { icon: '✨', text: '毛球获得了神秘访客的互动！' },
-        { icon: '💫', text: '团子被分享到了朋友圈！' },
-        { icon: '🌈', text: '雪球今天超有人气！' },
-        { icon: '🎈', text: '阿花收到了爱心点赞！' },
-        { icon: '🌸', text: '年糕意外成为了网红！' },
-        { icon: '🔥', text: '煤球正在被疯狂浏览！' },
-        { icon: '💖', text: '黑豆收到了热情的互动！' }
+    var eventTemplates = [
+        { icon: '🎲', text: '好像有人在偷偷看猫咪们～' },
+        { icon: '🌟', text: '突然走红！某只猫被疯狂浏览！' },
+        { icon: '🎉', text: '神秘访客给猫咪们点了赞！' },
+        { icon: '✨', text: '猫猫世界发生了奇妙的事情～' },
+        { icon: '💫', text: '有人分享了猫咪照片到朋友圈！' },
+        { icon: '🌈', text: '今天的猫咪们格外耀眼！' },
+        { icon: '🎈', text: '爱心爆炸！猫咪收到了一波点赞！' },
+        { icon: '🌸', text: '某只猫咪成为了今日之星！' },
+        { icon: '🔥', text: '热度飙升！猫咪图鉴被疯狂浏览！' },
+        { icon: '💖', text: '某只猫咪悄悄打动了所有人的心！' }
     ];
 
-    function showRandomEvent() {
-        const event = events[Math.floor(Math.random() * events.length)];
-        const toast = document.getElementById('randomEventToast');
-        const icon = document.getElementById('eventIcon');
-        const text = document.getElementById('eventText');
+    async function showRandomEvent() {
+        if (catsData.length === 0) return;
+        var randomCat = catsData[Math.floor(Math.random() * catsData.length)];
+        var event = eventTemplates[Math.floor(Math.random() * eventTemplates.length)];
+        var toast = document.getElementById('randomEventToast');
+        var icon = document.getElementById('eventIcon');
+        var text = document.getElementById('eventText');
 
         icon.textContent = event.icon;
-        text.textContent = event.text;
+        text.textContent = randomCat.name + '：' + event.text;
         toast.classList.add('show');
 
         setTimeout(() => {
             toast.classList.remove('show');
         }, 4000);
 
-        // 随机给某只猫增加浏览
-        const randomCat = catsData[Math.floor(Math.random() * catsData.length)];
-        randomCat.views = (randomCat.views || 0) + Math.floor(Math.random() * 5) + 1;
-        saveKPI();
-
-        // 更新成长数据
-        if (typeof checkAndTriggerLevelUp === 'function') {
-            var result = checkAndTriggerLevelUp(randomCat);
-            if (result && result.didLevelUp) {
-                refreshCatCard(randomCat);
-            }
+        // 随机给这只猫增加浏览量
+        var updated = await updateCatStats(randomCat.id, { views: Math.floor(Math.random() * 5) + 1 }, { silent: true });
+        if (updated) {
+            refreshCatCard(updated);
+            renderDashboard();
+            renderRanking();
+            renderAdminTable();
+            updateFooterStats();
         }
-
-        renderDashboard();
-        renderRanking();
     }
 
     // 随机间隔 20-40 秒
@@ -872,6 +1157,12 @@ function getFilteredCats() {
         case 'likes':
             filtered.sort((a, b) => getLikesCount(b) - getLikesCount(a));
             break;
+        case 'createdAt-desc':
+            filtered.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+            break;
+        case 'exp-desc':
+            filtered.sort((a, b) => (b.exp || 0) - (a.exp || 0));
+            break;
         case 'score':
             filtered.sort((a, b) => calculateCatScore(b) - calculateCatScore(a));
             break;
@@ -906,6 +1197,8 @@ function renderCats() {
         const card = createCatCard(cat, index);
         grid.appendChild(card);
     });
+
+    initViewTracking();
 }
 
 /**
@@ -980,6 +1273,16 @@ function createCatCard(cat, index) {
                 '        style="font-size:0.9rem;">' +
                     '<span>🖼️</span>' +
                 '</button>' +
+                '<button class="action-btn edit-btn admin-only" data-display="inline-flex"' +
+                '        data-cat-id="' + cat.id + '"' +
+                '        title="编辑">' +
+                    '<span>✏️</span>' +
+                '</button>' +
+                '<button class="action-btn delete-btn admin-only" data-display="inline-flex"' +
+                '        data-cat-id="' + cat.id + '"' +
+                '        title="删除">' +
+                    '<span>🗑️</span>' +
+                '</button>' +
             '</div>' +
             '<span class="cat-click-hint">点击查看详情</span>' +
             '<div class="card-shimmer"></div>' +
@@ -1043,10 +1346,23 @@ function setupCardEvents(card, cat) {
         });
     }
 
+    const editBtn = card.querySelector('.edit-btn');
+    editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openEditModal(cat.id);
+    });
+
+    const deleteBtn = card.querySelector('.delete-btn');
+    deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteCat(cat.id);
+    });
+
     // 彩蛋：连续点击头像触发（5次连击）
     const imageContainer = card.querySelector('.cat-image-container');
     imageContainer.addEventListener('click', (e) => {
         if (e.target.closest('.action-btn')) return;
+        e.stopPropagation();
 
         clickCounts[cat.id] = (clickCounts[cat.id] || 0) + 1;
         // 持久化彩蛋进度（即使未触发也保存）
@@ -1066,15 +1382,15 @@ function setupCardEvents(card, cat) {
 /**
  * 切换点赞状态
  */
-function toggleLike(catId, btn, card) {
-    userLikes[catId] = (userLikes[catId] || 0) + 1;
-    localStorage.setItem('userLikes', JSON.stringify(userLikes));
+async function toggleLike(catId, btn, card) {
+    const cat = await updateCatStats(catId, { likes: 1 });
+    if (!cat) return;
 
     btn.classList.add('liked');
     btn.querySelector('span').textContent = '❤️';
 
     const likeCount = card.querySelector('.cat-like-count');
-    likeCount.innerHTML = '<span>❤️</span> ' + getLikesCount({ id: catId, likes: 0 });
+    likeCount.innerHTML = '<span>❤️</span> ' + getLikesCount(cat);
 
     // 动画效果
     btn.style.transform = 'scale(1.3)';
@@ -1082,25 +1398,23 @@ function toggleLike(catId, btn, card) {
         btn.style.transform = '';
     }, 300);
 
-    // 更新成长数据
-    var cat = catsData.find(function (c) { return c.id === catId; });
-    if (cat && typeof checkAndTriggerLevelUp === 'function') {
-        var result = checkAndTriggerLevelUp(cat);
-        // 如果升级了，更新卡片 UI
-        if (result && result.didLevelUp) {
-            refreshCatCard(cat);
-        }
-    }
-
+    refreshCatCard(cat);
+    renderDashboard();
+    renderRanking();
+    renderAdminTable();
     updateFooterStats();
 }
 
 /**
  * 切换收藏状态
  */
-function toggleFavorite(catId, btn, card) {
+async function toggleFavorite(catId, btn, card) {
     const index = userFavorites.indexOf(catId);
-    if (index > -1) {
+    const shouldFavorite = index === -1;
+    const cat = await updateCatStats(catId, { favorites: shouldFavorite ? 1 : -1 });
+    if (!cat) return;
+
+    if (!shouldFavorite) {
         userFavorites.splice(index, 1);
         btn.classList.remove('favorited');
         btn.querySelector('span').textContent = '🤍';
@@ -1116,15 +1430,8 @@ function toggleFavorite(catId, btn, card) {
         }, 300);
     }
     localStorage.setItem('userFavorites', JSON.stringify(userFavorites));
-
-    // 更新成长数据
-    var cat = catsData.find(function (c) { return c.id === catId; });
-    if (cat && typeof checkAndTriggerLevelUp === 'function') {
-        var result = checkAndTriggerLevelUp(cat);
-        if (result && result.didLevelUp) {
-            refreshCatCard(cat);
-        }
-    }
+    syncGlobalState();
+    refreshCatCard(cat);
 
     // 如果当前在"只看收藏"筛选，更新显示
     if (currentFilter === 'favorited') {
@@ -1132,27 +1439,38 @@ function toggleFavorite(catId, btn, card) {
     }
 
     updateFooterStats();
-    renderFavoritesSection();
+    renderDashboard();
+    renderRanking();
+    renderAdminTable();
 }
 
 /**
  * 分享猫咪
  */
-function shareCat(cat, btn) {
+async function shareCat(cat, btn) {
     const shareUrl = `${window.location.origin}${window.location.pathname}?cat=${cat.id}`;
-    const shareText = `来看看这只可爱的${cat.name}！${cat.breed}，${cat.age}岁，${cat.desc?.slice(0, 50) || ''}...`;
+    var shareText = '我在猫咪图鉴发现了【' + cat.name + '】！它是 ' + cat.age + ' 岁的' + cat.breed + '，当前等级【' + (cat.growthTitle || cat.title || '新手萌猫') + '】。快来看看这只可爱猫咪吧 🐱';
 
-    // 分享成功，增加分享计数
-    if (!cat.shares) cat.shares = 0;
-    cat.shares++;
-    saveKPI();
-
-    // 更新成长数据
-    if (typeof checkAndTriggerLevelUp === 'function') {
-        var result = checkAndTriggerLevelUp(cat);
-        if (result && result.didLevelUp) {
-            refreshCatCard(cat);
+    // Call backend share API
+    let updatedCat = null;
+    try {
+        if (backendDataLoaded && window.CatApi && window.CatApi.shareCat) {
+            updatedCat = await window.CatApi.shareCat(cat.id);
+        } else {
+            updatedCat = await updateCatStats(cat.id, { shares: 1 });
         }
+    } catch (e) {
+        updatedCat = await updateCatStats(cat.id, { shares: 1 });
+    }
+
+    if (updatedCat) {
+        cat = updatedCat;
+        refreshCatCard(cat);
+        renderDashboard();
+        renderRanking();
+        renderAdminTable();
+        renderMyUploads();
+        updateFooterStats();
     }
 
     if (navigator.share) {
@@ -1239,9 +1557,10 @@ function openModal(cat) {
             </div>
             <div class="modal-level-info">
                 ${(() => {
-                    const score = calculateCatScore(cat);
-                    const level = getCatLevel(score);
-                    return `<span class="level-badge">${level.emoji} ${level.name}</span> · 热度值: ${score}`;
+                    var exp = cat.exp || 0;
+                    var level = getCatLevel(exp);
+                    var progress = getLevelProgress(exp);
+                    return '<span class="level-badge">' + level.emoji + ' Lv.' + level.level + ' ' + level.title + '</span> · EXP: ' + exp + ' (进度 ' + progress + '%)';
                 })()}
             </div>
         </div>
@@ -1259,27 +1578,40 @@ function openModal(cat) {
             <button class="modal-share-btn copy" id="modalCopyBtn">
                 <span>📋</span> 复制链接
             </button>
+            <button class="modal-share-btn copy" id="modalCopyTextBtn" style="background: linear-gradient(135deg, #7BC67B, #5FBF5F); color: white; border: none;">
+                <span>📝</span> 复制分享文案
+            </button>
             <button class="modal-share-btn copy" id="modalPosterBtn" style="background: linear-gradient(135deg, #FF9B9B, #FFB26B); color: white; border: none;">
                 <span>🖼️</span> 生成分享海报
             </button>
         </div>
+
+        <div id="modalCommentsSection" class="modal-section comments-section">
+            <!-- 评论区由 comments.js 动态渲染 -->
+        </div>
     `;
 
     // Modal 内的点赞按钮
-    document.getElementById('modalLikeBtn').addEventListener('click', function() {
-        userLikes[cat.id] = (userLikes[cat.id] || 0) + 1;
-        localStorage.setItem('userLikes', JSON.stringify(userLikes));
+    document.getElementById('modalLikeBtn').addEventListener('click', async function() {
+        const updated = await updateCatStats(cat.id, { likes: 1 });
+        if (!updated) return;
+        cat = updated;
         this.innerHTML = `<span>❤️</span> 点赞 (${getLikesCount(cat)})`;
         this.style.background = '#FF6B8A';
         this.style.color = 'white';
         showToast('点赞成功！', 'success');
-        updateFooterStats();
+        renderAllDynamicSections();
     });
 
     // Modal 内的收藏按钮
-    document.getElementById('modalFavoriteBtn').addEventListener('click', function() {
+    document.getElementById('modalFavoriteBtn').addEventListener('click', async function() {
         const index = userFavorites.indexOf(cat.id);
-        if (index > -1) {
+        const shouldFavorite = index === -1;
+        const updated = await updateCatStats(cat.id, { favorites: shouldFavorite ? 1 : -1 });
+        if (!updated) return;
+        cat = updated;
+
+        if (!shouldFavorite) {
             userFavorites.splice(index, 1);
             this.classList.remove('favorited');
             this.style.background = '';
@@ -1293,14 +1625,18 @@ function openModal(cat) {
             this.innerHTML = '<span>❤️</span> 已收藏';
         }
         localStorage.setItem('userFavorites', JSON.stringify(userFavorites));
-        renderCats();
-        renderFavoritesSection();
-        updateFooterStats();
+        syncGlobalState();
+        renderAllDynamicSections();
     });
 
     // 复制链接按钮
-    document.getElementById('modalCopyBtn').addEventListener('click', function() {
+    document.getElementById('modalCopyBtn').addEventListener('click', async function() {
         const shareUrl = `${window.location.origin}${window.location.pathname}?cat=${cat.id}`;
+        const updated = await updateCatStats(cat.id, { shares: 1 }, { silent: true });
+        if (updated) {
+            cat = updated;
+            renderAllDynamicSections();
+        }
         navigator.clipboard.writeText(shareUrl).then(() => {
             this.innerHTML = '<span>✅</span> 已复制!';
             this.classList.add('success');
@@ -1319,6 +1655,33 @@ function openModal(cat) {
             closeModal();
             setTimeout(function () { openPosterModal(cat); }, 350);
         });
+    }
+
+    // Modal 内的复制分享文案按钮
+    var modalCopyTextBtn = document.getElementById('modalCopyTextBtn');
+    if (modalCopyTextBtn) {
+        modalCopyTextBtn.addEventListener('click', async function() {
+            var shareText = '我在猫咪图鉴发现了【' + cat.name + '】！它是 ' + cat.age + ' 岁的' + cat.breed + '，称号是【' + (cat.growthTitle || cat.title || '人气猫咪') + '】。快来看看这只可爱猫咪吧 🐱';
+            var shareUrl = window.location.origin + window.location.pathname + '?cat=' + cat.id;
+            try {
+                await updateCatStats(cat.id, { shares: 1 }, { silent: true });
+                renderAllDynamicSections();
+            } catch(e) {}
+            navigator.clipboard.writeText(shareText + '\n' + shareUrl).then(function() {
+                var btn = document.getElementById('modalCopyTextBtn');
+                var origHTML = btn.innerHTML;
+                btn.innerHTML = '<span>✅</span> 文案已复制!';
+                showToast('分享文案已复制', 'success');
+                setTimeout(function() {
+                    btn.innerHTML = origHTML;
+                }, 2000);
+            });
+        });
+    }
+
+    // Render comments
+    if (window.Comments && window.Comments.renderSection) {
+        window.Comments.renderSection(cat.id);
     }
 
     overlay.classList.add('active');
@@ -1422,6 +1785,12 @@ function setupNavigation() {
                 case 'upload':
                     targetId = 'upload-section';
                     break;
+                case 'my-uploads':
+                    targetId = 'my-uploads-section';
+                    break;
+                case 'admin':
+                    targetId = 'admin-section';
+                    break;
             }
 
             const target = document.getElementById(targetId);
@@ -1456,7 +1825,9 @@ function setupNavigation() {
             { id: 'cats-section', name: 'cats' },
             { id: 'dashboard-section', name: 'dashboard' },
             { id: 'ranking-section', name: 'ranking' },
-            { id: 'upload-section', name: 'upload' }
+            { id: 'upload-section', name: 'upload' },
+            { id: 'my-uploads-section', name: 'my-uploads' },
+            { id: 'admin-section', name: 'admin' }
         ];
 
         for (const section of sections) {
@@ -1493,6 +1864,424 @@ function highlightRandomCat() {
 
     // 显示推荐提示
     showToast(`今天推荐你看看：${randomCat.name}`, 'info');
+}
+
+// ===== 猫咪管理后台 =====
+
+function getAdminCats() {
+    let rows = [...catsData];
+    const keyword = adminSearch.trim().toLowerCase();
+
+    if (keyword) {
+        rows = rows.filter(cat =>
+            cat.name.toLowerCase().includes(keyword) ||
+            cat.breed.toLowerCase().includes(keyword)
+        );
+    }
+
+    const [field, order] = adminSort.split('-');
+    rows.sort((a, b) => {
+        let result = 0;
+        if (field === 'name') {
+            result = a.name.localeCompare(b.name, 'zh-CN');
+        } else if (field === 'createdAt') {
+            result = new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+        } else {
+            result = Number(a[field] || 0) - Number(b[field] || 0);
+        }
+        return order === 'asc' ? result : -result;
+    });
+
+    return rows;
+}
+
+// ===== 我的上传 =====
+
+function renderMyUploads() {
+    var grid = document.getElementById('myUploadsGrid');
+    var emptyEl = document.getElementById('myUploadsEmpty');
+    var loginHint = document.getElementById('myUploadsLoginHint');
+    if (!grid || !emptyEl || !loginHint) return;
+
+    var isLoggedIn = window.Auth && window.Auth.isLoggedIn();
+    if (!isLoggedIn) {
+        loginHint.style.display = 'block';
+        grid.style.display = 'none';
+        emptyEl.style.display = 'none';
+        return;
+    }
+
+    loginHint.style.display = 'none';
+    var currentUser = window.Auth.getCurrentUser();
+    var myCats = catsData.filter(function (c) {
+        return c.uploaderId === currentUser.id;
+    });
+
+    if (myCats.length === 0) {
+        grid.style.display = 'none';
+        emptyEl.style.display = 'block';
+    } else {
+        grid.style.display = 'grid';
+        emptyEl.style.display = 'none';
+        grid.innerHTML = myCats.map(function (cat, index) {
+            var likesCount = getLikesCount(cat);
+            var traitsHTML = cat.traits.map(function (t) { return '<span class="cat-tag">' + t + '</span>'; }).join('');
+            var growthHTML = typeof renderGrowthUI === 'function' ? renderGrowthUI(cat) : '';
+            return '' +
+              '<div class="my-cat-item" id="my-upload-' + cat.id + '">' +
+                '<img class="my-cat-thumb" src="' + cat.img + '" alt="' + cat.name + '" onerror="this.src=\'https://placehold.co/150x100/FFE8E8/FF9B9B?text=' + encodeURIComponent(cat.name) + '\'">' +
+                '<div class="my-cat-info">' +
+                  '<h4 class="my-cat-name">' + cat.name + '</h4>' +
+                  '<p class="my-cat-breed">' + cat.breed + ' · ' + cat.age + '岁</p>' +
+                  '<div class="cat-tags">' + traitsHTML + '</div>' +
+                  '<span class="my-cat-likes">❤️ ' + likesCount + '</span>' +
+                '</div>' +
+                '<div class="my-cat-actions">' +
+                  '<button class="my-cat-edit-btn" data-cat-id="' + cat.id + '">编辑</button>' +
+                  '<button class="my-cat-delete-btn" data-cat-id="' + cat.id + '">删除</button>' +
+                '</div>' +
+              '</div>';
+        }).join('');
+
+        // Bind events
+        grid.querySelectorAll('.my-cat-edit-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                openEditModal(btn.dataset.catId);
+            });
+        });
+        grid.querySelectorAll('.my-cat-delete-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                deleteCat(btn.dataset.catId);
+            });
+        });
+    }
+}
+
+function renderAdminTable() {
+    const tbody = document.getElementById('adminCatsTable');
+    if (!tbody) return;
+
+    const rows = getAdminCats();
+    updateLegacyImportButton();
+
+    if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="admin-empty">没有匹配的猫咪数据</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = rows.map(cat => {
+        const createdAt = cat.createdAt ? new Date(cat.createdAt).toLocaleString('zh-CN') : '-';
+        return `
+            <tr>
+                <td>
+                    <img class="admin-cat-thumb" src="${escapeHTML(cat.img)}" alt="${escapeHTML(cat.name)}"
+                         onerror="this.src='https://placehold.co/72x54/FFE8E8/FF9B9B?text=${encodeURIComponent(cat.name)}'">
+                </td>
+                <td>${escapeHTML(cat.name)}</td>
+                <td>${escapeHTML(cat.breed)}</td>
+                <td>${escapeHTML(cat.age)}</td>
+                <td><div class="admin-traits">${cat.traits.map(trait => `<span>${escapeHTML(trait)}</span>`).join('')}</div></td>
+                <td>${cat.exp || 0}</td>
+                <td>Lv.${cat.level || cat.growthLevel || 1} ${escapeHTML(cat.title || cat.growthTitle || '新手萌猫')}</td>
+                <td>${escapeHTML(createdAt)}</td>
+                <td>
+                    <div class="admin-actions">
+                        <button type="button" class="admin-edit-btn" data-cat-id="${escapeHTML(cat.id)}">编辑</button>
+                        <button type="button" class="admin-delete-btn" data-cat-id="${escapeHTML(cat.id)}">删除</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function setupAdminPanel() {
+    const searchInput = document.getElementById('adminSearchInput');
+    const sortSelect = document.getElementById('adminSortSelect');
+    const table = document.getElementById('adminCatsTable');
+    const importBtn = document.getElementById('legacyImportBtn');
+
+    if (searchInput) {
+        let timer;
+        searchInput.addEventListener('input', () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => {
+                adminSearch = searchInput.value.trim();
+                renderAdminTable();
+            }, 250);
+        });
+    }
+
+    if (sortSelect) {
+        sortSelect.addEventListener('change', () => {
+            adminSort = sortSelect.value;
+            renderAdminTable();
+        });
+    }
+
+    if (table) {
+        table.addEventListener('click', (event) => {
+            const editBtn = event.target.closest('.admin-edit-btn');
+            const deleteBtn = event.target.closest('.admin-delete-btn');
+            if (editBtn) {
+                openEditModal(editBtn.dataset.catId);
+            }
+            if (deleteBtn) {
+                deleteCat(deleteBtn.dataset.catId);
+            }
+        });
+    }
+
+    if (importBtn) {
+        importBtn.addEventListener('click', importLegacyCats);
+        updateLegacyImportButton();
+    }
+}
+
+function setupEditModal() {
+    const overlay = document.getElementById('editModalOverlay');
+    const closeBtn = document.getElementById('editModalClose');
+    const cancelBtn = document.getElementById('editCancelBtn');
+    const form = document.getElementById('editCatForm');
+
+    if (!overlay || !form) return;
+
+    closeBtn.addEventListener('click', closeEditModal);
+    cancelBtn.addEventListener('click', closeEditModal);
+    overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) closeEditModal();
+    });
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const id = document.getElementById('editCatId').value;
+        const traits = document.getElementById('editCatTraits').value
+            .split(/[，,]/)
+            .map(item => item.trim())
+            .filter(Boolean);
+
+        const payload = {
+            name: document.getElementById('editCatName').value.trim(),
+            breed: document.getElementById('editCatBreed').value.trim(),
+            age: parseFloat(document.getElementById('editCatAge').value),
+            traits,
+            favorite: document.getElementById('editCatFavorite').value.trim(),
+            desc: document.getElementById('editCatDesc').value.trim(),
+            img: document.getElementById('editCatImg').value.trim()
+        };
+
+        if (!payload.name || !payload.breed || Number.isNaN(payload.age) || payload.age < 0 || traits.length === 0) {
+            showToast('请填写有效的名字、品种、年龄和性格', 'error');
+            return;
+        }
+        if (payload.desc.length > 300) {
+            showToast('猫咪介绍不能超过 300 字', 'error');
+            return;
+        }
+
+        try {
+            let updated;
+            if (backendDataLoaded && window.CatApi) {
+                updated = await window.CatApi.updateCat(id, payload);
+            } else {
+                updated = { ...catsData.find(cat => cat.id === id), ...payload, updatedAt: new Date().toISOString() };
+            }
+            replaceCatInState(updated);
+            closeEditModal();
+            renderAllDynamicSections();
+            showToast('猫咪资料已更新', 'success');
+        } catch (error) {
+            console.error('编辑猫咪失败：', error);
+            showToast(error.message || '编辑猫咪失败', 'error');
+        }
+    });
+}
+
+function openEditModal(catId) {
+    // Check auth for user-uploaded cats
+    if (window.Auth) {
+        var isLoggedIn = window.Auth.isLoggedIn();
+        if (!isLoggedIn) {
+            showToast('请先登录后再编辑猫咪', 'error');
+            window.Auth.openModal('login');
+            return;
+        }
+        var currentUser = window.Auth.getCurrentUser();
+        var cat = catsData.find(function (c) { return c.id === catId; });
+        if (cat && cat.uploadedByUser && cat.uploaderId && cat.uploaderId !== currentUser.id && currentUser.role !== 'admin') {
+            showToast('只能编辑自己上传的猫咪', 'error');
+            return;
+        }
+    }
+
+    cat = catsData.find(function (item) { return item.id === catId; });
+    var overlay = document.getElementById('editModalOverlay');
+    if (!cat || !overlay) return;
+
+    document.getElementById('editCatId').value = cat.id;
+    document.getElementById('editCatName').value = cat.name || '';
+    document.getElementById('editCatBreed').value = cat.breed || '';
+    document.getElementById('editCatAge').value = cat.age || 0;
+    document.getElementById('editCatFavorite').value = cat.favorite || '';
+    document.getElementById('editCatTraits').value = (cat.traits || []).join(', ');
+    document.getElementById('editCatDesc').value = cat.desc || '';
+    document.getElementById('editCatImg').value = cat.img || '';
+
+    overlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeEditModal() {
+    const overlay = document.getElementById('editModalOverlay');
+    if (!overlay) return;
+    overlay.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+async function deleteCat(catId) {
+    const cat = catsData.find(item => item.id === catId);
+    if (!cat) return;
+
+    // Check auth for user-uploaded cats
+    if (window.Auth) {
+        var isLoggedIn = window.Auth.isLoggedIn();
+        if (!isLoggedIn) {
+            showToast('请先登录后再删除猫咪', 'error');
+            window.Auth.openModal('login');
+            return;
+        }
+        var currentUser = window.Auth.getCurrentUser();
+        if (cat.uploadedByUser && cat.uploaderId && cat.uploaderId !== currentUser.id && currentUser.role !== 'admin') {
+            showToast('只能删除自己上传的猫咪', 'error');
+            return;
+        }
+    }
+
+    const confirmed = await confirmCatDeletion(cat);
+    if (!confirmed) return;
+
+    try {
+        if (backendDataLoaded && window.CatApi) {
+            await window.CatApi.deleteCat(catId);
+        }
+        catsData = catsData.filter(item => item.id !== catId);
+        userFavorites = userFavorites.filter(id => id !== catId);
+        localStorage.setItem('userFavorites', JSON.stringify(userFavorites));
+        syncGlobalState();
+        renderAllDynamicSections();
+        showToast('猫咪已删除', 'success');
+    } catch (error) {
+        console.error('删除猫咪失败：', error);
+        showToast(error.message || '删除猫咪失败', 'error');
+    }
+}
+
+function confirmCatDeletion(cat) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay active confirm-delete-overlay';
+        overlay.innerHTML = `
+            <div class="modal-content confirm-delete-content">
+                <div class="modal-body">
+                    <h2 class="modal-name">删除猫咪</h2>
+                    <p class="confirm-delete-text">确定要删除「${escapeHTML(cat.name)}」吗？删除后 Dashboard 和排行榜会同步刷新。</p>
+                    <div class="form-actions">
+                        <button type="button" class="submit-btn confirm-delete-btn">
+                            <span class="btn-icon">🗑️</span>
+                            <span>确认删除</span>
+                        </button>
+                        <button type="button" class="reset-btn confirm-cancel-btn">取消</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        document.body.style.overflow = 'hidden';
+
+        function close(result) {
+            overlay.remove();
+            if (!document.querySelector('.modal-overlay.active')) {
+                document.body.style.overflow = '';
+            }
+            resolve(result);
+        }
+
+        overlay.querySelector('.confirm-delete-btn').addEventListener('click', () => close(true));
+        overlay.querySelector('.confirm-cancel-btn').addEventListener('click', () => close(false));
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) close(false);
+        });
+    });
+}
+
+async function importLegacyCats() {
+    if (!backendDataLoaded || !window.CatApi) {
+        showToast('后端连接后才能导入本地数据', 'error');
+        return;
+    }
+
+    const raw = localStorage.getItem('userUploadedCats');
+    let legacyCats = [];
+    let importedIds = [];
+    try {
+        legacyCats = raw ? JSON.parse(raw) : [];
+        importedIds = JSON.parse(localStorage.getItem('legacyImportedCatIds') || '[]');
+    } catch (error) {
+        showToast('本地旧数据格式异常，无法导入', 'error');
+        return;
+    }
+    const candidates = legacyCats.filter(cat => cat && cat.id && !importedIds.includes(cat.id));
+
+    if (candidates.length === 0) {
+        localStorage.setItem('legacyCatsMigrated', 'true');
+        updateLegacyImportButton();
+        showToast('没有需要导入的本地猫咪数据', 'info');
+        return;
+    }
+
+    let importedCount = 0;
+    try {
+        for (const legacyCat of candidates) {
+            const created = await window.CatApi.createCat({
+                name: legacyCat.name,
+                breed: legacyCat.breed,
+                age: legacyCat.age,
+                traits: legacyCat.traits,
+                favorite: legacyCat.favorite,
+                desc: legacyCat.desc,
+                img: legacyCat.img
+            });
+            replaceCatInState(created);
+            importedIds.push(legacyCat.id);
+            importedCount += 1;
+        }
+        localStorage.setItem('legacyImportedCatIds', JSON.stringify(importedIds));
+        localStorage.setItem('legacyCatsMigrated', 'true');
+        renderAllDynamicSections();
+        showToast(`已导入 ${importedCount} 只本地猫咪`, 'success');
+    } catch (error) {
+        localStorage.setItem('legacyImportedCatIds', JSON.stringify(importedIds));
+        console.error('导入本地猫咪失败：', error);
+        showToast(error.message || '导入失败，请稍后再试', 'error');
+    }
+}
+
+function updateLegacyImportButton() {
+    const importBtn = document.getElementById('legacyImportBtn');
+    if (!importBtn) return;
+
+    const raw = localStorage.getItem('userUploadedCats');
+    let legacyCount = 0;
+    try {
+        const legacyCats = raw ? JSON.parse(raw) : [];
+        const importedIds = JSON.parse(localStorage.getItem('legacyImportedCatIds') || '[]');
+        legacyCount = legacyCats.filter(cat => cat && cat.id && !importedIds.includes(cat.id)).length;
+    } catch (e) {
+        legacyCount = 0;
+    }
+
+    importBtn.disabled = !backendDataLoaded || legacyCount === 0;
+    importBtn.textContent = legacyCount > 0 ? `导入本地猫咪数据 (${legacyCount})` : '无本地数据可导入';
 }
 
 // ===== 彩蛋功能 =====
@@ -1602,6 +2391,7 @@ function setupUploadForm() {
     const traitsValidation = document.getElementById('traitsValidation');
 
     let uploadedImageData = null;
+    let selectedImageFile = null;
 
     // 图片方式切换
     imageMethodRadios.forEach(radio => {
@@ -1625,6 +2415,7 @@ function setupUploadForm() {
     fileInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
+            selectedImageFile = file;
             const reader = new FileReader();
             reader.onload = (event) => {
                 uploadedImageData = event.target.result;
@@ -1653,6 +2444,7 @@ function setupUploadForm() {
 
         const file = e.dataTransfer.files[0];
         if (file && file.type.startsWith('image/')) {
+            selectedImageFile = file;
             const reader = new FileReader();
             reader.onload = (event) => {
                 uploadedImageData = event.target.result;
@@ -1669,6 +2461,7 @@ function setupUploadForm() {
     removeImageBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         uploadedImageData = null;
+        selectedImageFile = null;
         imagePreview.src = '';
         imagePreview.style.display = 'none';
         uploadPlaceholder.style.display = 'flex';
@@ -1677,8 +2470,15 @@ function setupUploadForm() {
     });
 
     // 表单提交
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
         e.preventDefault();
+
+        // 检查登录状态
+        if (window.Auth && !window.Auth.isLoggedIn()) {
+            showToast('请先登录后再上传猫咪', 'error');
+            window.Auth.openModal('login');
+            return;
+        }
 
         // 获取性格标签
         const traits = [];
@@ -1717,12 +2517,28 @@ function setupUploadForm() {
             traitsValidation.classList.remove('show');
         }
 
+        if (desc.length > 300) {
+            showToast('猫咪介绍不能超过 300 字', 'error');
+            return;
+        }
+
         // 获取图片
         let imgUrl = '';
         if (imageMethod === 'url') {
             imgUrl = document.getElementById('catImageUrl').value.trim();
         } else {
-            imgUrl = uploadedImageData || '';
+            if (selectedImageFile && backendDataLoaded && window.CatApi) {
+                try {
+                    const uploadResult = await window.CatApi.uploadImage(selectedImageFile);
+                    imgUrl = uploadResult.path;
+                } catch (error) {
+                    console.error('图片上传失败：', error);
+                    showToast(error.message || '图片上传失败', 'error');
+                    return;
+                }
+            } else {
+                imgUrl = uploadedImageData || '';
+            }
         }
 
         // 如果没有图片，使用占位图
@@ -1730,42 +2546,55 @@ function setupUploadForm() {
             imgUrl = `https://placehold.co/400x300/FFE8E8/FF9B9B?text=${encodeURIComponent(name)}`;
         }
 
-        // 创建新猫咪对象
-        const newCat = {
-            id: generateId(),
+        const newCatPayload = {
             name,
             breed,
             age: parseFloat(age),
             traits,
             favorite: favorite || '神秘玩具',
             desc: desc || `${name}是一只可爱的小猫咪，性格${traits.join('、')}。`,
-            img: imgUrl,
-            imgAlt: imgUrl,
-            likes: 0,
-            shares: 0,
-            views: 0,
-            gameInteractions: 0,
-            uploadedByUser: true
+            img: imgUrl
         };
 
-        // 保存到localStorage
-        const savedCats = JSON.parse(localStorage.getItem('userUploadedCats') || '[]');
-        savedCats.push(newCat);
-        localStorage.setItem('userUploadedCats', JSON.stringify(savedCats));
-
-        // 添加到数据
-        catsData.push(newCat);
-
-        // 初始化新猫咪的成长数据
-        if (typeof updateCatGrowth === 'function') {
-            updateCatGrowth(newCat);
+        let newCat;
+        try {
+            if (backendDataLoaded && window.CatApi) {
+                newCat = await window.CatApi.createCat(newCatPayload);
+            } else {
+                newCat = {
+                    id: generateId(),
+                    ...newCatPayload,
+                    likes: 0,
+                    favorites: 0,
+                    shares: 0,
+                    views: 0,
+                    gameInteractions: 0,
+                    uploadedByUser: true,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+            }
+        } catch (error) {
+            console.error('新增猫咪失败：', error);
+            showToast(error.message || '新增猫咪失败', 'error');
+            return;
         }
-        if (typeof saveGrowthData === 'function') {
-            saveGrowthData();
+
+        const normalizedCat = replaceCatInState(newCat);
+        if (!backendDataLoaded) {
+            const savedCats = JSON.parse(localStorage.getItem('userUploadedCats') || '[]');
+            savedCats.push(normalizedCat);
+            localStorage.setItem('userUploadedCats', JSON.stringify(savedCats));
+            if (typeof updateCatGrowth === 'function') {
+                updateCatGrowth(normalizedCat);
+            }
+            if (typeof saveGrowthData === 'function') {
+                saveGrowthData();
+            }
         }
 
         // 重新渲染
-        renderCats();
+        renderAllDynamicSections();
 
         // 显示成功提示
         const successToast = document.getElementById('uploadSuccessToast');
@@ -1775,6 +2604,7 @@ function setupUploadForm() {
         // 重置表单
         form.reset();
         uploadedImageData = null;
+        selectedImageFile = null;
         imagePreview.style.display = 'none';
         uploadPlaceholder.style.display = 'flex';
         removeImageBtn.style.display = 'none';
@@ -1795,6 +2625,10 @@ function renderFavoritesSection() {
     const favoritesSection = document.getElementById('favorites-section');
     const favoritesGrid = document.getElementById('favoritesGrid');
     const emptyFavorites = document.getElementById('emptyFavorites');
+
+    if (!favoritesSection || !favoritesGrid || !emptyFavorites) {
+        return;
+    }
 
     const favoriteCats = catsData.filter(cat => isFavorited(cat.id));
 
@@ -1916,7 +2750,7 @@ function initYarnGame() {
         yarnBall.style.top = ballY + 'px';
     }
 
-    function catchBall() {
+    async function catchBall() {
         const now = Date.now();
         const timeDiff = now - lastCatchTime;
 
@@ -1939,27 +2773,23 @@ function initYarnGame() {
         localStorage.setItem('yarnScore', score.toString());
 
         // 随机给一只猫增加互动（每3次抓取触发一次）
-        if (score % 3 === 0) {
+        if (score % 3 === 0 && catsData.length > 0) {
             const randomCat = catsData[Math.floor(Math.random() * catsData.length)];
-            randomCat.gameInteractions = (randomCat.gameInteractions || 0) + 1;
-            saveKPI();
-
-            // 更新成长数据
-            if (typeof checkAndTriggerLevelUp === 'function') {
-                var result = checkAndTriggerLevelUp(randomCat);
-                if (result && result.didLevelUp) {
-                    refreshCatCard(randomCat);
-                }
+            const updated = await updateCatStats(randomCat.id, { gameInteractions: 1 }, { silent: true });
+            const activeCat = updated || randomCat;
+            if (updated) {
+                refreshCatCard(updated);
             }
 
             // 显示游戏提示
-            gameToastText.textContent = `${randomCat.name} 获得 +1 互动！${combo > 1 ? `连击 x${combo}！` : ''}`;
+            gameToastText.textContent = `${activeCat.name} 获得 +1 互动！${combo > 1 ? `连击 x${combo}！` : ''}`;
             gameToast.classList.add('show');
             setTimeout(() => gameToast.classList.remove('show'), 2500);
 
             // 更新面板
             renderDashboard();
             renderRanking();
+            renderAdminTable();
             renderCats();
         }
 
@@ -1992,7 +2822,7 @@ function initYarnGame() {
 function updateFooterStats() {
     const statsEl = document.getElementById('footerStats');
     const favCount = userFavorites.length;
-    const totalLikes = Object.values(userLikes).reduce((a, b) => a + b, 0);
+    const totalLikes = catsData.reduce((sum, cat) => sum + getLikesCount(cat), 0);
     const yarnScore = localStorage.getItem('yarnScore') || '0';
     const userCatsCount = catsData.filter(c => c.uploadedByUser).length;
 
@@ -2048,16 +2878,20 @@ function checkUrlParams() {
 
 // ===== 初始化 =====
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // 初始化主题（必须在其他渲染之前）
     initTheme();
 
     // 初始化数据
-    initData();
+    await initData();
 
     // 初始化成长数据（必须在 initData 之后）
     if (typeof initGrowthData === 'function') {
         initGrowthData();
+        if (window.catsData) {
+            catsData = window.catsData.map(normalizeClientCat);
+            syncGlobalState();
+        }
     }
 
     // 渲染猫咪卡片
@@ -2078,6 +2912,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // 设置上传表单
     setupUploadForm();
 
+    // 设置管理后台和编辑弹窗
+    setupAdminPanel();
+    setupEditModal();
+
     // 设置平滑滚动
     setupSmoothScroll();
 
@@ -2097,6 +2935,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (posterOverlay && posterOverlay.classList.contains('active')) {
                 return; // poster.js 自己处理
             }
+            var editOverlay = document.getElementById('editModalOverlay');
+            if (editOverlay && editOverlay.classList.contains('active')) {
+                closeEditModal();
+                return;
+            }
             closeModal();
         }
     });
@@ -2112,6 +2955,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // 初始化 KPI 面板
     renderDashboard();
     renderRanking();
+    renderAdminTable();
+    renderMyUploads();
+
+    // Listen for auth state changes
+    window.addEventListener('authStateChanged', function () {
+        renderCats();
+        renderMyUploads();
+        updateFooterStats();
+        if (window.Auth && window.Auth.updateAdminVisibility) {
+            window.Auth.updateAdminVisibility();
+        }
+    });
 
     // 启动随机事件系统
     startRandomEvents();
@@ -2121,6 +2976,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 检查URL参数
     checkUrlParams();
+
+    // 应用管理员可见性
+    if (window.Auth && window.Auth.updateAdminVisibility) {
+        window.Auth.updateAdminVisibility();
+    }
 
     // 键盘快捷键
     document.addEventListener('keydown', (e) => {
