@@ -1,0 +1,7 @@
+.env
+.env.local
+server/data/*
+node_modules/.cache
+.git
+.workbuddy
+*.log

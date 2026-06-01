@@ -1,0 +1,17 @@
+services:
+  cat-app:
+    build: .
+    container_name: cat-app
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATA_DIR=/app/server/data
+      - UPLOAD_DIR=/app/server/uploads
+    volumes:
+      - ./server/data:/app/server/data
+      - ./server/uploads:/app/server/uploads
+    restart: unless-stopped
